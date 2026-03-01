@@ -544,6 +544,11 @@ type MediaCleanupConfig struct {
 	Interval int  `json:"interval_minutes" env:"PICOCLAW_MEDIA_CLEANUP_INTERVAL"`
 }
 
+type ResendConfig struct {
+	APIKey      string `json:"api_key"      env:"PICOCLAW_TOOLS_RESEND_API_KEY"`
+	FromAddress string `json:"from_address" env:"PICOCLAW_TOOLS_RESEND_FROM_ADDRESS"`
+}
+
 type ToolsConfig struct {
 	AllowReadPaths  []string           `json:"allow_read_paths"  env:"PICOCLAW_TOOLS_ALLOW_READ_PATHS"`
 	AllowWritePaths []string           `json:"allow_write_paths" env:"PICOCLAW_TOOLS_ALLOW_WRITE_PATHS"`
@@ -552,6 +557,7 @@ type ToolsConfig struct {
 	Exec            ExecConfig         `json:"exec"`
 	Skills          SkillsToolsConfig  `json:"skills"`
 	MediaCleanup    MediaCleanupConfig `json:"media_cleanup"`
+	Resend          ResendConfig       `json:"resend"`
 }
 
 type SkillsToolsConfig struct {
