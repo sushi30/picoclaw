@@ -6,9 +6,27 @@ import (
 	"testing"
 )
 
+// mockSpawner implements SubTurnSpawner for testing
+type mockSpawner struct{}
+
+func (m *mockSpawner) SpawnSubTurn(ctx context.Context, cfg SubTurnConfig) (*ToolResult, error) {
+	// Extract task from system prompt for response
+	task := cfg.SystemPrompt
+	if strings.Contains(task, "Task: ") {
+		parts := strings.Split(task, "Task: ")
+		if len(parts) > 1 {
+			task = parts[1]
+		}
+	}
+	return &ToolResult{
+		ForLLM:  "Task completed: " + task,
+		ForUser: "Task completed",
+	}, nil
+}
+
 func TestSpawnTool_Execute_EmptyTask(t *testing.T) {
 	provider := &MockLLMProvider{}
-	manager := NewSubagentManager(provider, "test-model", "/tmp/test", nil)
+	manager := NewSubagentManager(provider, "test-model", "/tmp/test")
 	tool := NewSpawnTool(manager)
 
 	ctx := context.Background()
@@ -42,8 +60,9 @@ func TestSpawnTool_Execute_EmptyTask(t *testing.T) {
 
 func TestSpawnTool_Execute_ValidTask(t *testing.T) {
 	provider := &MockLLMProvider{}
-	manager := NewSubagentManager(provider, "test-model", "/tmp/test", nil)
+	manager := NewSubagentManager(provider, "test-model", "/tmp/test")
 	tool := NewSpawnTool(manager)
+	tool.SetSpawner(&mockSpawner{})
 
 	ctx := context.Background()
 	args := map[string]any{

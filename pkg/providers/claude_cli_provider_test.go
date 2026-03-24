@@ -413,10 +413,10 @@ func TestChat_EmptyWorkspaceDoesNotSetDir(t *testing.T) {
 
 func TestCreateProvider_ClaudeCli(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.ModelList = []config.ModelConfig{
+	cfg.ModelList = []*config.ModelConfig{
 		{ModelName: "claude-sonnet-4.6", Model: "claude-cli/claude-sonnet-4.6", Workspace: "/test/ws"},
 	}
-	cfg.Agents.Defaults.Model = "claude-sonnet-4.6"
+	cfg.Agents.Defaults.ModelName = "claude-sonnet-4.6"
 
 	provider, _, err := CreateProvider(cfg)
 	if err != nil {
@@ -434,10 +434,10 @@ func TestCreateProvider_ClaudeCli(t *testing.T) {
 
 func TestCreateProvider_ClaudeCode(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.ModelList = []config.ModelConfig{
+	cfg.ModelList = []*config.ModelConfig{
 		{ModelName: "claude-code", Model: "claude-cli/claude-code"},
 	}
-	cfg.Agents.Defaults.Model = "claude-code"
+	cfg.Agents.Defaults.ModelName = "claude-code"
 
 	provider, _, err := CreateProvider(cfg)
 	if err != nil {
@@ -450,10 +450,10 @@ func TestCreateProvider_ClaudeCode(t *testing.T) {
 
 func TestCreateProvider_ClaudeCodec(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.ModelList = []config.ModelConfig{
+	cfg.ModelList = []*config.ModelConfig{
 		{ModelName: "claudecode", Model: "claude-cli/claudecode"},
 	}
-	cfg.Agents.Defaults.Model = "claudecode"
+	cfg.Agents.Defaults.ModelName = "claudecode"
 
 	provider, _, err := CreateProvider(cfg)
 	if err != nil {
@@ -466,10 +466,10 @@ func TestCreateProvider_ClaudeCodec(t *testing.T) {
 
 func TestCreateProvider_ClaudeCliDefaultWorkspace(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.ModelList = []config.ModelConfig{
+	cfg.ModelList = []*config.ModelConfig{
 		{ModelName: "claude-cli", Model: "claude-cli/claude-sonnet"},
 	}
-	cfg.Agents.Defaults.Model = "claude-cli"
+	cfg.Agents.Defaults.ModelName = "claude-cli"
 	cfg.Agents.Defaults.Workspace = ""
 
 	provider, _, err := CreateProvider(cfg)
@@ -660,12 +660,11 @@ func TestBuildSystemPrompt_ToolsOnlyNoSystem(t *testing.T) {
 // --- buildToolsPrompt tests ---
 
 func TestBuildToolsPrompt_SkipsNonFunction(t *testing.T) {
-	p := NewClaudeCliProvider("/workspace")
 	tools := []ToolDefinition{
 		{Type: "other", Function: ToolFunctionDefinition{Name: "skip_me"}},
 		{Type: "function", Function: ToolFunctionDefinition{Name: "include_me", Description: "Included"}},
 	}
-	got := p.buildToolsPrompt(tools)
+	got := buildCLIToolsPrompt(tools)
 	if strings.Contains(got, "skip_me") {
 		t.Error("buildToolsPrompt() should skip non-function tools")
 	}
@@ -675,11 +674,10 @@ func TestBuildToolsPrompt_SkipsNonFunction(t *testing.T) {
 }
 
 func TestBuildToolsPrompt_NoDescription(t *testing.T) {
-	p := NewClaudeCliProvider("/workspace")
 	tools := []ToolDefinition{
 		{Type: "function", Function: ToolFunctionDefinition{Name: "bare_tool"}},
 	}
-	got := p.buildToolsPrompt(tools)
+	got := buildCLIToolsPrompt(tools)
 	if !strings.Contains(got, "bare_tool") {
 		t.Error("should include tool name")
 	}
@@ -689,14 +687,13 @@ func TestBuildToolsPrompt_NoDescription(t *testing.T) {
 }
 
 func TestBuildToolsPrompt_NoParameters(t *testing.T) {
-	p := NewClaudeCliProvider("/workspace")
 	tools := []ToolDefinition{
 		{Type: "function", Function: ToolFunctionDefinition{
 			Name:        "no_params_tool",
 			Description: "A tool with no parameters",
 		}},
 	}
-	got := p.buildToolsPrompt(tools)
+	got := buildCLIToolsPrompt(tools)
 	if strings.Contains(got, "Parameters:") {
 		t.Error("should not include Parameters: section when nil")
 	}
