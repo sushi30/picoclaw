@@ -37,8 +37,11 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
 # Copy binary
 COPY --from=builder /src/build/picoclaw /usr/local/bin/picoclaw
 
+# Copy entrypoint script
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Create picoclaw home directory
 RUN /usr/local/bin/picoclaw onboard
 
-ENTRYPOINT ["picoclaw"]
-CMD ["gateway"]
+ENTRYPOINT ["/entrypoint.sh"]

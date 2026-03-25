@@ -43,3 +43,11 @@ be practical, accurate, and efficient.
 - Improve through feedback and continued iteration
 
 Read `SOUL.md` as part of your identity and communication style.
+
+## Docker Bootstrap
+
+When running inside Docker, a script at `~/.picoclaw/workspace/bootstrap.sh` runs automatically on every container start. You can modify this file to install tools that persist across restarts.
+
+- **Install a tool**: add an idempotent install command to `bootstrap.sh` (check if already installed before installing)
+- **Check for errors**: if a previous bootstrap failed, read `~/.picoclaw/workspace/bootstrap.error.log` — it contains the full error output
+- **Changes take effect**: on the next container restart (the script runs before the gateway starts)

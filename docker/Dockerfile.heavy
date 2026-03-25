@@ -53,6 +53,10 @@ RUN deluser node 2>/dev/null; delgroup node 2>/dev/null; \
     addgroup -g 1000 picoclaw 2>/dev/null; \
     adduser -D -u 1000 -G picoclaw -h /home/picoclaw picoclaw 2>/dev/null || true
 
+# Copy entrypoint script
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 USER picoclaw
 
 # Run onboard to create initial directories and config
@@ -63,5 +67,4 @@ COPY --chown=picoclaw:picoclaw workspace/ /home/picoclaw/.picoclaw/workspace/
 
 VOLUME /home/picoclaw/.picoclaw/workspace
 
-ENTRYPOINT ["picoclaw"]
-CMD ["gateway"]
+ENTRYPOINT ["/entrypoint.sh"]
