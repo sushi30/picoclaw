@@ -1,4 +1,4 @@
-.PHONY: dev dev-frontend dev-backend build build-frontend build-dev-picoclaw test lint clean
+.PHONY: dev dev-frontend dev-backend build build-frontend build-dev-picoclaw build-go test lint clean
 
 # Go variables
 GO?=CGO_ENABLED=0 go
@@ -105,6 +105,10 @@ build-dev-picoclaw:
 	@echo "Building picoclaw for launcher development..."
 	@mkdir -p "$$(dirname "$(PICOCLAW_BINARY)")"
 	@$(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o "$(PICOCLAW_BINARY)" ../cmd/picoclaw
+
+# Build only the Go binary (frontend dist must already exist)
+build-go:
+	${WEB_GO} build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/picoclaw-launcher ./backend/
 
 # Run all tests
 test:
