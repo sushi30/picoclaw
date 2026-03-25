@@ -9,6 +9,7 @@
 //   - Plaintext:   "sk-abc123"          → returned as-is
 //   - File ref:    "file://filename.key" → content read from configDir/filename.key
 //   - Encrypted:   "enc://<base64>"     → AES-256-GCM decrypt via PICOCLAW_KEY_PASSPHRASE
+//   - Env var:     "env://VAR_NAME"     → value of the named environment variable
 //   - Empty:       ""                   → returned as-is (auth_method=oauth etc.)
 //
 // Encryption uses AES-256-GCM with HKDF-SHA256 key derivation (< 1ms, safe for embedded Linux).
@@ -77,6 +78,7 @@ const picoclawHome = "PICOCLAW_HOME"
 const (
 	FileScheme = "file://"
 	EncScheme  = "enc://"
+	envScheme  = "env://"
 
 	hkdfInfo = "picoclaw-credential-v1"
 	saltLen  = 16
@@ -105,9 +107,10 @@ func NewResolver(configDir string) *Resolver {
 
 // Resolve returns the actual credential value for raw:
 //
-//   - ""                → "" (no error; auth_method=oauth needs no key)
-//   - "file://name.key" → trimmed content of configDir/name.key
-//   - anything else     → raw unchanged (plaintext credential)
+//   - ""                  → "" (no error; auth_method=oauth needs no key)
+//   - "file://name.key"   → trimmed content of configDir/name.key
+//   - "env://VAR_NAME"    → value of the named environment variable
+//   - anything else       → raw unchanged (plaintext credential)
 func (r *Resolver) Resolve(raw string) (string, error) {
 	if raw == "" {
 		return "", nil
@@ -147,6 +150,21 @@ func (r *Resolver) Resolve(raw string) (string, error) {
 
 	if strings.HasPrefix(raw, EncScheme) {
 		return resolveEncrypted(raw)
+	}
+
+	if strings.HasPrefix(raw, envScheme) {
+		varName := strings.TrimPrefix(raw, envScheme)
+		if varName == "" {
+			return "", fmt.Errorf("credential: env:// reference has no variable name")
+		}
+		val, ok := os.LookupEnv(varName)
+		if !ok {
+			return "", fmt.Errorf("credential: env:// variable %q is not set", varName)
+		}
+		if val == "" {
+			return "", fmt.Errorf("credential: env:// variable %q is empty", varName)
+		}
+		return val, nil
 	}
 
 	// Plaintext credential — return unchanged.
