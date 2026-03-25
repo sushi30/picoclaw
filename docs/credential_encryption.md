@@ -49,6 +49,7 @@ The same formats apply to both `api_key` (singular) and individual elements in t
 | Plaintext | `sk-abc123` | Used as-is |
 | File reference | `file://openai.key` | Content read from the same directory as the config file |
 | Encrypted | `enc://<base64>` | Decrypted at startup using `PICOCLAW_KEY_PASSPHRASE` |
+| Env var | `env://OPENROUTER_API_KEY` | Value read from the named environment variable at startup |
 | Empty | `""` | Passed through unchanged (used with `auth_method: oauth`) |
 
 ---
