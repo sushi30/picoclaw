@@ -1634,7 +1634,7 @@ func encryptPlaintextAPIKeys(
 
 		// Encrypt each key in APIKeys
 		for i, key := range m.APIKeys {
-			if key == "" || strings.HasPrefix(key, "enc://") || strings.HasPrefix(key, "file://") {
+			if key == "" || strings.HasPrefix(key, "enc://") || strings.HasPrefix(key, "file://") || strings.HasPrefix(key, "env://") {
 				sealedEntry.APIKeys[i] = key
 				continue
 			}
