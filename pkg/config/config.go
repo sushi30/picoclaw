@@ -1171,6 +1171,80 @@ func toNameIndex(list []*ModelConfig) []string {
 	return nameList
 }
 
+// encryptPlaintextAPIKeys returns a copy of models with plaintext api_key values
+// encrypted. Returns (nil, nil) when nothing changed (all keys already sealed or
+// empty). Returns (nil, error) if any key fails to encrypt — callers must treat
+// this as a hard failure to prevent a mixed plaintext/ciphertext state on disk.
+// Symmetric counterpart of resolveAPIKeys: both operate purely on []ModelConfig
+// and leave JSON marshaling to the caller.
+func encryptPlaintextAPIKeys(
+	models map[string]ModelSecurityEntry,
+	passphrase string,
+) (map[string]ModelSecurityEntry, error) {
+	sealed := make(map[string]ModelSecurityEntry, len(models))
+	changed := false
+	for k, m := range models {
+		sealedEntry := ModelSecurityEntry{APIKeys: make([]string, len(m.APIKeys))}
+
+		// Encrypt each key in APIKeys
+		for i, key := range m.APIKeys {
+			if key == "" || strings.HasPrefix(key, "enc://") || strings.HasPrefix(key, "file://") || strings.HasPrefix(key, "env://") {
+				sealedEntry.APIKeys[i] = key
+				continue
+			}
+			encrypted, err := credential.Encrypt(passphrase, "", key)
+			if err != nil {
+				return nil, fmt.Errorf("cannot seal api_key for model %q: %w", k, err)
+			}
+			sealedEntry.APIKeys[i] = encrypted
+			changed = true
+		}
+
+		sealed[k] = sealedEntry
+	}
+	if !changed {
+		return nil, nil
+	}
+	return sealed, nil
+}
+
+// resolveAPIKeys decrypts or dereferences each api_key in models in-place.
+// Supports plaintext (no-op), file:// (read from configDir), and enc:// (AES-GCM decrypt).
+func resolveAPIKeys(models []*ModelConfig, configDir string) error {
+	cr := credential.NewResolver(configDir)
+	for i := range models {
+		// Resolve APIKeys array
+		for j, key := range models[i].apiKeys {
+			resolved, err := cr.Resolve(key)
+			if err != nil {
+				return fmt.Errorf(
+					"model_list[%d] (%s): api_keys[%d]: %w",
+					i,
+					models[i].ModelName,
+					j,
+					err,
+				)
+			}
+			models[i].apiKeys[j] = resolved
+		}
+	}
+	return nil
+}
+
+func (c *Config) migrateChannelConfigs() {
+	// Discord: mention_only -> group_trigger.mention_only
+	if c.Channels.Discord.MentionOnly && !c.Channels.Discord.GroupTrigger.MentionOnly {
+		c.Channels.Discord.GroupTrigger.MentionOnly = true
+	}
+
+	// OneBot: group_trigger_prefix -> group_trigger.prefixes
+	if len(c.Channels.OneBot.GroupTriggerPrefix) > 0 &&
+		len(c.Channels.OneBot.GroupTrigger.Prefixes) == 0 {
+		c.Channels.OneBot.GroupTrigger.Prefixes = c.Channels.OneBot.GroupTriggerPrefix
+	}
+}
+
+
 func SaveConfig(path string, cfg *Config) error {
 	if cfg.Version < CurrentVersion {
 		cfg.Version = CurrentVersion
