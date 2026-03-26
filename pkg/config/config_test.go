@@ -1582,3 +1582,18 @@ func TestFilterSensitiveData_AllTokenTypes(t *testing.T) {
 		})
 	}
 }
+
+func TestEncryptPlaintextAPIKeys_SkipsEnvScheme(t *testing.T) {
+	models := map[string]ModelSecurityEntry{
+		"mymodel": {APIKeys: []string{"env://OPENROUTER_API_KEY"}},
+	}
+	sealed, err := encryptPlaintextAPIKeys(models, "passphrase")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// When all keys are already sealed/skipped, the function returns nil to
+	// signal no changes — env:// must be treated as already-sealed.
+	if sealed != nil {
+		t.Errorf("expected nil (no changes), got non-nil map — env:// key was treated as plaintext and encrypted")
+	}
+}
