@@ -219,12 +219,12 @@ func (s *SecureString) UnmarshalJSON(value []byte) error {
 }
 
 func (s SecureString) MarshalYAML() (any, error) {
-	// Preserve raw value if it is already a reference (enc:// or file://)
-	if strings.HasPrefix(s.raw, credential.EncScheme) || strings.HasPrefix(s.raw, credential.FileScheme) {
+	// Preserve raw value if it is already a reference (enc://, file://, or env://)
+	if strings.HasPrefix(s.raw, credential.EncScheme) || strings.HasPrefix(s.raw, credential.FileScheme) || strings.HasPrefix(s.raw, "env://") {
 		return s.raw, nil
 	}
 	// If resolved is a reference format (e.g. set via Set), copy back to raw
-	if strings.HasPrefix(s.resolved, credential.EncScheme) || strings.HasPrefix(s.resolved, credential.FileScheme) {
+	if strings.HasPrefix(s.resolved, credential.EncScheme) || strings.HasPrefix(s.resolved, credential.FileScheme) || strings.HasPrefix(s.resolved, "env://") {
 		s.raw = s.resolved
 		return s.raw, nil
 	}
