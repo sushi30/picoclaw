@@ -82,6 +82,7 @@ type ChannelsSecurity struct {
 	WeCom    *WeComSecurity    `yaml:"wecom,omitempty"`
 	Pico     *PicoSecurity     `yaml:"pico,omitempty"`
 	IRC      *IRCSecurity      `yaml:"irc,omitempty"`
+	Email    *EmailSecurity    `yaml:"email,omitempty"`
 }
 
 type TelegramSecurity struct {
@@ -140,6 +141,11 @@ type IRCSecurity struct {
 	Password         string `yaml:"password,omitempty"          env:"PICOCLAW_CHANNELS_IRC_PASSWORD"`
 	NickServPassword string `yaml:"nickserv_password,omitempty" env:"PICOCLAW_CHANNELS_IRC_NICKSERV_PASSWORD"`
 	SASLPassword     string `yaml:"sasl_password,omitempty"     env:"PICOCLAW_CHANNELS_IRC_SASL_PASSWORD"`
+}
+
+type EmailSecurity struct {
+	SMTPPassword string `yaml:"smtp_password,omitempty" env:"PICOCLAW_CHANNELS_EMAIL_SMTP_PASSWORD"`
+	IMAPPassword string `yaml:"imap_password,omitempty" env:"PICOCLAW_CHANNELS_EMAIL_IMAP_PASSWORD"`
 }
 
 type WebToolsSecurity struct {
@@ -327,6 +333,9 @@ func mergeChannelsSecurity(dst, src *ChannelsSecurity) {
 	}
 	if src.IRC != nil && (src.IRC.Password != "" || src.IRC.NickServPassword != "" || src.IRC.SASLPassword != "") {
 		dst.IRC = src.IRC
+	}
+	if src.Email != nil && (src.Email.SMTPPassword != "" || src.Email.IMAPPassword != "") {
+		dst.Email = src.Email
 	}
 }
 
