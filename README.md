@@ -393,6 +393,7 @@ PicoClaw supports 30+ LLM providers through the `model_list` configuration. Use 
 | [NVIDIA NIM](https://build.nvidia.com/) | `nvidia/` | Required | NVIDIA hosted models |
 | [Cerebras](https://cloud.cerebras.ai/) | `cerebras/` | Required | Fast inference |
 | [Novita AI](https://novita.ai/) | `novita/` | Required | Various open models |
+| [Xiaomi MiMo](https://platform.xiaomimimo.com/) | `mimo/` | Required | MiMo models |
 | [Ollama](https://ollama.com/) | `ollama/` | Not needed | Local models, self-hosted |
 | [vLLM](https://docs.vllm.ai/) | `vllm/` | Not needed | Local deployment, OpenAI-compatible |
 | [LiteLLM](https://docs.litellm.ai/) | `litellm/` | Varies | Proxy for 100+ providers |
@@ -452,9 +453,7 @@ Talk to your PicoClaw through 17+ messaging platforms:
 | **DingTalk** | Medium (client credentials) | Stream | [Guide](docs/channels/dingtalk/README.md) |
 | **Feishu / Lark** | Medium (App ID + Secret) | WebSocket/SDK | [Guide](docs/channels/feishu/README.md) |
 | **LINE** | Medium (credentials + webhook) | Webhook | [Guide](docs/channels/line/README.md) |
-| **WeCom Bot** | Medium (webhook URL) | Webhook | [Guide](docs/channels/wecom/wecom_bot/README.md) |
-| **WeCom App** | Medium (corp credentials) | Webhook | [Guide](docs/channels/wecom/wecom_app/README.md) |
-| **WeCom AI Bot** | Medium (token + AES key) | WebSocket / Webhook | [Guide](docs/channels/wecom/wecom_aibot/README.md) |
+| **WeCom** | Easy (QR login or manual) | WebSocket | [Guide](docs/channels/wecom/README.md) |
 | **IRC** | Medium (server + nick) | IRC protocol | [Guide](docs/chat-apps.md#irc) |
 | **OneBot** | Medium (WebSocket URL) | OneBot v11 | [Guide](docs/channels/onebot/README.md) |
 | **MaixCam** | Easy (enable) | TCP socket | [Guide](docs/channels/maixcam/README.md) |

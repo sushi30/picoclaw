@@ -390,6 +390,7 @@ PicoClaw hỗ trợ 30+ Provider LLM thông qua cấu hình `model_list`. Sử d
 | [NVIDIA NIM](https://build.nvidia.com/) | `nvidia/` | Bắt buộc | Mô hình do NVIDIA lưu trữ |
 | [Cerebras](https://cloud.cerebras.ai/) | `cerebras/` | Bắt buộc | Suy luận nhanh |
 | [Novita AI](https://novita.ai/) | `novita/` | Bắt buộc | Nhiều mô hình mở |
+| [Xiaomi MiMo](https://platform.xiaomimimo.com/) | `mimo/` | Bắt buộc | Mô hình MiMo |
 | [Ollama](https://ollama.com/) | `ollama/` | Không cần | Mô hình cục bộ, tự lưu trữ |
 | [vLLM](https://docs.vllm.ai/) | `vllm/` | Không cần | Triển khai cục bộ, tương thích OpenAI |
 | [LiteLLM](https://docs.litellm.ai/) | `litellm/` | Tùy | Proxy cho 100+ provider |
@@ -446,9 +447,7 @@ Trò chuyện với PicoClaw của bạn qua 17+ nền tảng nhắn tin:
 | **DingTalk** | Trung bình (client credentials) | Stream | [Hướng dẫn](docs/channels/dingtalk/README.vi.md) |
 | **Feishu / Lark** | Trung bình (App ID + Secret) | WebSocket/SDK | [Hướng dẫn](docs/channels/feishu/README.vi.md) |
 | **LINE** | Trung bình (credentials + webhook) | Webhook | [Hướng dẫn](docs/channels/line/README.vi.md) |
-| **WeCom Bot** | Trung bình (webhook URL) | Webhook | [Hướng dẫn](docs/channels/wecom/wecom_bot/README.vi.md) |
-| **WeCom App** | Trung bình (corp credentials) | Webhook | [Hướng dẫn](docs/channels/wecom/wecom_app/README.vi.md) |
-| **WeCom AI Bot** | Trung bình (token + AES key) | WebSocket / Webhook | [Hướng dẫn](docs/channels/wecom/wecom_aibot/README.vi.md) |
+| **WeCom** | Dễ (đăng nhập QR hoặc thủ công) | WebSocket | [Hướng dẫn](docs/channels/wecom/README.md) |
 | **IRC** | Trung bình (server + nick) | IRC protocol | [Hướng dẫn](docs/vi/chat-apps.md#irc) |
 | **OneBot** | Trung bình (WebSocket URL) | OneBot v11 | [Hướng dẫn](docs/channels/onebot/README.vi.md) |
 | **MaixCam** | Dễ (bật) | TCP socket | [Hướng dẫn](docs/channels/maixcam/README.vi.md) |

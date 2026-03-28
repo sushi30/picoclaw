@@ -390,6 +390,7 @@ PicoClaw mendukung 30+ provider LLM melalui konfigurasi `model_list`. Gunakan fo
 | [NVIDIA NIM](https://build.nvidia.com/) | `nvidia/` | Diperlukan | Model yang di-host NVIDIA |
 | [Cerebras](https://cloud.cerebras.ai/) | `cerebras/` | Diperlukan | Inferensi cepat |
 | [Novita AI](https://novita.ai/) | `novita/` | Diperlukan | Berbagai model open |
+| [Xiaomi MiMo](https://platform.xiaomimimo.com/) | `mimo/` | Diperlukan | Model MiMo |
 | [Ollama](https://ollama.com/) | `ollama/` | Tidak perlu | Model lokal, self-hosted |
 | [vLLM](https://docs.vllm.ai/) | `vllm/` | Tidak perlu | Deploy lokal, kompatibel OpenAI |
 | [LiteLLM](https://docs.litellm.ai/) | `litellm/` | Bervariasi | Proxy untuk 100+ provider |
@@ -446,9 +447,7 @@ Bicara dengan PicoClaw Anda melalui 17+ platform pesan:
 | **DingTalk** | Sedang (client credentials) | Stream | [Panduan](docs/channels/dingtalk/README.md) |
 | **Feishu / Lark** | Sedang (App ID + Secret) | WebSocket/SDK | [Panduan](docs/channels/feishu/README.md) |
 | **LINE** | Sedang (credentials + webhook) | Webhook | [Panduan](docs/channels/line/README.md) |
-| **WeCom Bot** | Sedang (webhook URL) | Webhook | [Panduan](docs/channels/wecom/wecom_bot/README.md) |
-| **WeCom App** | Sedang (corp credentials) | Webhook | [Panduan](docs/channels/wecom/wecom_app/README.md) |
-| **WeCom AI Bot** | Sedang (token + AES key) | WebSocket / Webhook | [Panduan](docs/channels/wecom/wecom_aibot/README.md) |
+| **WeCom** | Mudah (login QR atau manual) | WebSocket | [Panduan](docs/channels/wecom/README.md) |
 | **IRC** | Sedang (server + nick) | IRC protocol | [Panduan](docs/chat-apps.md#irc) |
 | **OneBot** | Sedang (WebSocket URL) | OneBot v11 | [Panduan](docs/channels/onebot/README.md) |
 | **MaixCam** | Mudah (aktifkan) | TCP socket | [Panduan](docs/channels/maixcam/README.md) |

@@ -390,6 +390,7 @@ PicoClaw は `model_list` 設定を通じて 30 以上の LLM Provider をサポ
 | [NVIDIA NIM](https://build.nvidia.com/) | `nvidia/` | 必須 | NVIDIA ホスティングモデル |
 | [Cerebras](https://cloud.cerebras.ai/) | `cerebras/` | 必須 | 高速推論 |
 | [Novita AI](https://novita.ai/) | `novita/` | 必須 | 各種オープンモデル |
+| [Xiaomi MiMo](https://platform.xiaomimimo.com/) | `mimo/` | 必須 | MiMo モデル |
 | [Ollama](https://ollama.com/) | `ollama/` | 不要 | ローカルモデル、セルフホスト |
 | [vLLM](https://docs.vllm.ai/) | `vllm/` | 不要 | ローカルデプロイ、OpenAI 互換 |
 | [LiteLLM](https://docs.litellm.ai/) | `litellm/` | 場合による | 100 以上の Provider のプロキシ |
@@ -446,9 +447,7 @@ Provider の完全な設定詳細は [Provider とモデル](docs/ja/providers.m
 | **DingTalk** | 中級（クライアント認証情報） | Stream | [ガイド](docs/channels/dingtalk/README.ja.md) |
 | **Feishu / Lark** | 中級（App ID + Secret） | WebSocket/SDK | [ガイド](docs/channels/feishu/README.ja.md) |
 | **LINE** | 中級（認証情報 + webhook） | Webhook | [ガイド](docs/channels/line/README.ja.md) |
-| **WeCom Bot** | 中級（webhook URL） | Webhook | [ガイド](docs/channels/wecom/wecom_bot/README.ja.md) |
-| **WeCom App** | 中級（corp 認証情報） | Webhook | [ガイド](docs/channels/wecom/wecom_app/README.ja.md) |
-| **WeCom AI Bot** | 中級（トークン + AES キー） | WebSocket / Webhook | [ガイド](docs/channels/wecom/wecom_aibot/README.ja.md) |
+| **WeCom** | 簡単（QR ログインまたは手動） | WebSocket | [ガイド](docs/channels/wecom/README.md) |
 | **IRC** | 中級（サーバー + nick） | IRC protocol | [ガイド](docs/ja/chat-apps.md#irc) |
 | **OneBot** | 中級（WebSocket URL） | OneBot v11 | [ガイド](docs/channels/onebot/README.ja.md) |
 | **MaixCam** | 簡単（有効化） | TCP socket | [ガイド](docs/channels/maixcam/README.ja.md) |
