@@ -717,6 +717,14 @@ func (c *MatrixChannel) handleMessageEvent(ctx context.Context, evt *event.Event
 				"mention_only": c.config.GroupTrigger.MentionOnly,
 				"prefixes":     c.config.GroupTrigger.Prefixes,
 			})
+			observePeer := bus.Peer{Kind: "group", ID: roomID}
+			observeMeta := map[string]string{
+				"room_id":  roomID,
+				"platform": "matrix",
+			}
+			c.ObserveGroupMessage(
+				ctx, observePeer, evt.ID.String(), senderID, roomID, content, mediaPaths, observeMeta, sender,
+			)
 			return
 		}
 		content = cleaned
