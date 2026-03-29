@@ -86,6 +86,9 @@
       "proxy": "",
       "allow_from": ["YOUR_USER_ID"],
       "use_markdown_v2": false,
+      "group_trigger": {
+        "mention_only": true
+      },
       "reasoning_channel_id": "",
       "streaming": {
         "enabled": true
@@ -106,6 +109,9 @@
       "app_id": "YOUR_QQ_APP_ID",
       "app_secret": "YOUR_QQ_APP_SECRET",
       "allow_from": [],
+      "group_trigger": {
+        "mention_only": true
+      },
       "reasoning_channel_id": ""
     },
     "maixcam": {
@@ -121,6 +127,9 @@
       "use_native": false,
       "session_store_path": "",
       "allow_from": [],
+      "group_trigger": {
+        "mention_only": false
+      },
       "reasoning_channel_id": ""
     },
     "feishu": {
@@ -130,6 +139,9 @@
       "encrypt_key": "",
       "verification_token": "",
       "allow_from": [],
+      "group_trigger": {
+        "mention_only": true
+      },
       "placeholder": {
         "enabled": true,
         "text": ["Thinking...", "Processing...", "Typing..."]
@@ -143,6 +155,9 @@
       "client_id": "YOUR_CLIENT_ID",
       "client_secret": "YOUR_CLIENT_SECRET",
       "allow_from": [],
+      "group_trigger": {
+        "mention_only": true
+      },
       "reasoning_channel_id": ""
     },
     "slack": {
@@ -150,6 +165,9 @@
       "bot_token": "xoxb-YOUR-BOT-TOKEN",
       "app_token": "xapp-YOUR-APP-TOKEN",
       "allow_from": [],
+      "group_trigger": {
+        "mention_only": true
+      },
       "reasoning_channel_id": ""
     },
     "matrix": {
@@ -177,6 +195,9 @@
       "channel_access_token": "YOUR_LINE_CHANNEL_ACCESS_TOKEN",
       "webhook_path": "/webhook/line",
       "allow_from": [],
+      "group_trigger": {
+        "mention_only": true
+      },
       "reasoning_channel_id": ""
     },
     "onebot": {
@@ -186,6 +207,9 @@
       "reconnect_interval": 5,
       "group_trigger_prefix": [],
       "allow_from": [],
+      "group_trigger": {
+        "mention_only": true
+      },
       "reasoning_channel_id": ""
     },
     "wecom": {
