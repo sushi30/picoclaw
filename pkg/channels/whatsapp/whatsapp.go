@@ -35,6 +35,7 @@ func NewWhatsAppChannel(cfg config.WhatsAppConfig, bus *bus.MessageBus) (*WhatsA
 		bus,
 		cfg.AllowFrom,
 		channels.WithMaxMessageLength(65536),
+		channels.WithGroupTrigger(cfg.GroupTrigger),
 		channels.WithReasoningChannelID(cfg.ReasoningChannelID),
 	)
 
@@ -246,6 +247,30 @@ func (c *WhatsAppChannel) handleIncomingMessage(msg map[string]any) {
 
 	if !c.IsAllowedSender(sender) {
 		return
+	}
+
+	// In group chats, apply unified group trigger filtering.
+	// Mention detection: check if the "mentions" field in the message payload
+	// contains the sender's own JID (proxy for being mentioned by others),
+	// or use false when no mention info is available.
+	if peer.Kind == "group" {
+		isMentioned := false
+		if mentionList, ok := msg["mentions"].([]any); ok {
+			for _, m := range mentionList {
+				if jid, ok := m.(string); ok && jid != "" {
+					// Any mention in the payload counts as the bot being addressed
+					_ = jid
+					isMentioned = true
+					break
+				}
+			}
+		}
+		respond, cleaned := c.ShouldRespondInGroup(isMentioned, content)
+		if !respond {
+			c.ObserveGroupMessage(c.ctx, peer, messageID, senderID, chatID, content, mediaPaths, metadata, sender)
+			return
+		}
+		content = cleaned
 	}
 
 	c.HandleMessage(c.ctx, peer, messageID, senderID, chatID, content, mediaPaths, metadata, sender)

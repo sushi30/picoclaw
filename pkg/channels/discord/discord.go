@@ -416,6 +416,13 @@ func (c *DiscordChannel) handleMessage(s *discordgo.Session, m *discordgo.Messag
 			logger.DebugCF("discord", "Group message ignored by group trigger", map[string]any{
 				"user_id": m.Author.ID,
 			})
+			observePeer := bus.Peer{Kind: "channel", ID: m.ChannelID}
+			observeMeta := map[string]string{
+				"guild_id": m.GuildID,
+				"user_id":  m.Author.ID,
+				"platform": "discord",
+			}
+			c.ObserveGroupMessage(c.ctx, observePeer, m.ID, m.Author.ID, m.ChannelID, content, nil, observeMeta, sender)
 			return
 		}
 		content = cleaned

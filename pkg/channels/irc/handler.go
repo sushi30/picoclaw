@@ -81,6 +81,13 @@ func (c *IRCChannel) onPrivmsg(conn *ircevent.Connection, e ircmsg.Message) {
 		}
 		respond, cleaned := c.ShouldRespondInGroup(isMentioned, content)
 		if !respond {
+			observeID := fmt.Sprintf("%s-%d", nick, time.Now().UnixNano())
+			observeMeta := map[string]string{
+				"platform": "irc",
+				"server":   c.config.Server,
+				"channel":  target,
+			}
+			c.ObserveGroupMessage(c.ctx, peer, observeID, nick, chatID, content, nil, observeMeta, sender)
 			return
 		}
 		content = cleaned
