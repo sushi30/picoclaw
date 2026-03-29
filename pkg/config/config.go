@@ -833,14 +833,14 @@ type EmailConfig struct {
 	smtpPassword   string
 	DefaultSubject string `json:"default_subject" env:"PICOCLAW_CHANNELS_EMAIL_DEFAULT_SUBJECT"`
 	// IMAP (inbound)
-	IMAPHost         string              `json:"imap_host"          env:"PICOCLAW_CHANNELS_EMAIL_IMAP_HOST"`
-	IMAPPort         int                 `json:"imap_port"          env:"PICOCLAW_CHANNELS_EMAIL_IMAP_PORT"`
-	IMAPUser         string              `json:"imap_user"          env:"PICOCLAW_CHANNELS_EMAIL_IMAP_USER"`
+	IMAPHost         string `json:"imap_host"          env:"PICOCLAW_CHANNELS_EMAIL_IMAP_HOST"`
+	IMAPPort         int    `json:"imap_port"          env:"PICOCLAW_CHANNELS_EMAIL_IMAP_PORT"`
+	IMAPUser         string `json:"imap_user"          env:"PICOCLAW_CHANNELS_EMAIL_IMAP_USER"`
 	imapPassword     string
-	PollIntervalSecs int                 `json:"poll_interval_secs" env:"PICOCLAW_CHANNELS_EMAIL_POLL_INTERVAL_SECS"`
+	PollIntervalSecs int `json:"poll_interval_secs" env:"PICOCLAW_CHANNELS_EMAIL_POLL_INTERVAL_SECS"`
 	// Common
-	AllowFrom          FlexibleStringSlice `json:"allow_from"            env:"PICOCLAW_CHANNELS_EMAIL_ALLOW_FROM"`
-	ReasoningChannelID string              `json:"reasoning_channel_id"  env:"PICOCLAW_CHANNELS_EMAIL_REASONING_CHANNEL_ID"`
+	AllowFrom          FlexibleStringSlice `json:"allow_from"           env:"PICOCLAW_CHANNELS_EMAIL_ALLOW_FROM"`
+	ReasoningChannelID string              `json:"reasoning_channel_id" env:"PICOCLAW_CHANNELS_EMAIL_REASONING_CHANNEL_ID"`
 	secDirty           bool
 }
 
@@ -1679,7 +1679,8 @@ func encryptPlaintextAPIKeys(
 
 		// Encrypt each key in APIKeys
 		for i, key := range m.APIKeys {
-			if key == "" || strings.HasPrefix(key, "enc://") || strings.HasPrefix(key, "file://") || strings.HasPrefix(key, "env://") {
+			if key == "" || strings.HasPrefix(key, "enc://") || strings.HasPrefix(key, "file://") ||
+				strings.HasPrefix(key, "env://") {
 				sealedEntry.APIKeys[i] = key
 				continue
 			}
