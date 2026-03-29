@@ -368,6 +368,7 @@ type ChannelsConfig struct {
 	Pico       PicoConfig       `json:"pico"`
 	PicoClient PicoClientConfig `json:"pico_client"`
 	IRC        IRCConfig        `json:"irc"`
+	Email      EmailConfig      `json:"email"`
 }
 
 // GroupTriggerConfig controls when the bot responds in group chats.
@@ -819,6 +820,40 @@ func (c *IRCConfig) SetNickServPassword(password string) {
 
 func (c *IRCConfig) SetSASLPassword(password string) {
 	c.saslPassword = password
+	c.secDirty = true
+}
+
+type EmailConfig struct {
+	Enabled bool `json:"enabled" env:"PICOCLAW_CHANNELS_EMAIL_ENABLED"`
+	// SMTP (outbound)
+	SMTPHost       string `json:"smtp_host"       env:"PICOCLAW_CHANNELS_EMAIL_SMTP_HOST"`
+	SMTPPort       int    `json:"smtp_port"       env:"PICOCLAW_CHANNELS_EMAIL_SMTP_PORT"`
+	SMTPFrom       string `json:"smtp_from"       env:"PICOCLAW_CHANNELS_EMAIL_SMTP_FROM"`
+	SMTPUser       string `json:"smtp_user"       env:"PICOCLAW_CHANNELS_EMAIL_SMTP_USER"`
+	smtpPassword   string
+	DefaultSubject string `json:"default_subject" env:"PICOCLAW_CHANNELS_EMAIL_DEFAULT_SUBJECT"`
+	// IMAP (inbound)
+	IMAPHost         string `json:"imap_host"          env:"PICOCLAW_CHANNELS_EMAIL_IMAP_HOST"`
+	IMAPPort         int    `json:"imap_port"          env:"PICOCLAW_CHANNELS_EMAIL_IMAP_PORT"`
+	IMAPUser         string `json:"imap_user"          env:"PICOCLAW_CHANNELS_EMAIL_IMAP_USER"`
+	imapPassword     string
+	PollIntervalSecs int `json:"poll_interval_secs" env:"PICOCLAW_CHANNELS_EMAIL_POLL_INTERVAL_SECS"`
+	// Common
+	AllowFrom          FlexibleStringSlice `json:"allow_from"           env:"PICOCLAW_CHANNELS_EMAIL_ALLOW_FROM"`
+	ReasoningChannelID string              `json:"reasoning_channel_id" env:"PICOCLAW_CHANNELS_EMAIL_REASONING_CHANNEL_ID"`
+	secDirty           bool
+}
+
+func (c *EmailConfig) SMTPPassword() string { return c.smtpPassword }
+func (c *EmailConfig) IMAPPassword() string { return c.imapPassword }
+
+func (c *EmailConfig) SetSMTPPassword(p string) {
+	c.smtpPassword = p
+	c.secDirty = true
+}
+
+func (c *EmailConfig) SetIMAPPassword(p string) {
+	c.imapPassword = p
 	c.secDirty = true
 }
 
@@ -1576,6 +1611,16 @@ func applySecurityConfig(cfg *Config, sec *SecurityConfig) error {
 		if sec.Channels.QQ != nil && sec.Channels.QQ.AppSecret != "" {
 			cfg.Channels.QQ.appSecret = sec.Channels.QQ.AppSecret
 		}
+
+		// Handle Email passwords
+		if sec.Channels.Email != nil {
+			if sec.Channels.Email.SMTPPassword != "" {
+				cfg.Channels.Email.smtpPassword = sec.Channels.Email.SMTPPassword
+			}
+			if sec.Channels.Email.IMAPPassword != "" {
+				cfg.Channels.Email.imapPassword = sec.Channels.Email.IMAPPassword
+			}
+		}
 	}
 
 	cfg.security = sec
@@ -1634,7 +1679,8 @@ func encryptPlaintextAPIKeys(
 
 		// Encrypt each key in APIKeys
 		for i, key := range m.APIKeys {
-			if key == "" || strings.HasPrefix(key, "enc://") || strings.HasPrefix(key, "file://") || strings.HasPrefix(key, "env://") {
+			if key == "" || strings.HasPrefix(key, "enc://") || strings.HasPrefix(key, "file://") ||
+				strings.HasPrefix(key, "env://") {
 				sealedEntry.APIKeys[i] = key
 				continue
 			}
