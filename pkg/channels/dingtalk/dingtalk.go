@@ -197,6 +197,13 @@ func (c *DingTalkChannel) onChatBotMessageReceived(
 		// In group chats, apply unified group trigger filtering
 		respond, cleaned := c.ShouldRespondInGroup(isMentioned, content)
 		if !respond {
+			observeSender := bus.SenderInfo{
+				Platform:    "dingtalk",
+				PlatformID:  senderID,
+				CanonicalID: identity.BuildCanonicalID("dingtalk", senderID),
+				DisplayName: senderNick,
+			}
+			c.ObserveGroupMessage(ctx, peer, "", senderID, chatID, content, nil, metadata, observeSender)
 			return nil, nil
 		}
 		content = cleaned

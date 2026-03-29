@@ -316,6 +316,15 @@ func (c *SlackChannel) handleMessageEvent(ev *slackevents.MessageEvent) {
 	if !strings.HasPrefix(channelID, "D") {
 		respond, cleaned := c.ShouldRespondInGroup(false, content)
 		if !respond {
+			observePeer := bus.Peer{Kind: "channel", ID: channelID}
+			observeMeta := map[string]string{
+				"message_ts": messageTS,
+				"channel_id": channelID,
+				"thread_ts":  threadTS,
+				"platform":   "slack",
+				"team_id":    c.teamID,
+			}
+			c.ObserveGroupMessage(c.ctx, observePeer, messageTS, senderID, chatID, content, nil, observeMeta, sender)
 			return
 		}
 		content = cleaned
