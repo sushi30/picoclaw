@@ -357,6 +357,17 @@ func (c *LINEChannel) processEvent(event lineEvent) {
 			logger.DebugCF("line", "Ignoring group message by group trigger", map[string]any{
 				"chat_id": chatID,
 			})
+			observeSender := bus.SenderInfo{
+				Platform:    "line",
+				PlatformID:  senderID,
+				CanonicalID: identity.BuildCanonicalID("line", senderID),
+			}
+			observePeer := bus.Peer{Kind: "group", ID: chatID}
+			observeMeta := map[string]string{
+				"platform":    "line",
+				"source_type": event.Source.Type,
+			}
+			c.ObserveGroupMessage(c.ctx, observePeer, msg.ID, senderID, chatID, content, mediaPaths, observeMeta, observeSender)
 			return
 		}
 		content = cleaned

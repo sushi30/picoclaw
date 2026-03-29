@@ -1,7 +1,9 @@
 package channels
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
@@ -261,5 +263,74 @@ func TestIsAllowedSender(t *testing.T) {
 				t.Fatalf("IsAllowedSender(%+v) = %v, want %v", tt.sender, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestObserveGroupMessage_PublishesObserveOnly(t *testing.T) {
+	mb := bus.NewMessageBus()
+	defer mb.Close()
+
+	ch := NewBaseChannel("test", nil, mb, nil)
+
+	peer := bus.Peer{Kind: "group", ID: "group123"}
+	sender := bus.SenderInfo{
+		Platform:    "test",
+		PlatformID:  "user1",
+		CanonicalID: "test:user1",
+		DisplayName: "Alice",
+	}
+
+	go ch.ObserveGroupMessage(
+		context.Background(),
+		peer,
+		"msg1", "user1", "group123", "hello world",
+		nil, nil, sender,
+	)
+
+	select {
+	case msg := <-mb.InboundChan():
+		if !msg.ObserveOnly {
+			t.Fatalf("expected ObserveOnly=true, got false")
+		}
+		if msg.Channel != "test" {
+			t.Fatalf("expected channel 'test', got %q", msg.Channel)
+		}
+		if msg.Content != "hello world" {
+			t.Fatalf("expected content 'hello world', got %q", msg.Content)
+		}
+		if msg.Peer.Kind != "group" {
+			t.Fatalf("expected peer kind 'group', got %q", msg.Peer.Kind)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for observe-only message on bus")
+	}
+}
+
+func TestObserveGroupMessage_SkipsTypingAndPlaceholder(t *testing.T) {
+	// ObserveGroupMessage must not trigger placeholder/typing even if the channel
+	// has those capabilities (the owner is nil so they can't fire, but we verify
+	// the channel field ObserveOnly is set and no extra messages are sent).
+	mb := bus.NewMessageBus()
+	defer mb.Close()
+
+	ch := NewBaseChannel("test", nil, mb, nil)
+
+	peer := bus.Peer{Kind: "group", ID: "g1"}
+	go ch.ObserveGroupMessage(context.Background(), peer, "", "s1", "g1", "hi", nil, nil)
+
+	select {
+	case msg := <-mb.InboundChan():
+		if !msg.ObserveOnly {
+			t.Fatalf("expected ObserveOnly=true")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out")
+	}
+
+	// No second message (no placeholder / typing broadcast)
+	select {
+	case extra := <-mb.InboundChan():
+		t.Fatalf("unexpected extra message: %+v", extra)
+	default:
 	}
 }

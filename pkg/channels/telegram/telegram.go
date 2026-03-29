@@ -647,19 +647,6 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, message *telego.Mes
 		content = "[media only]"
 	}
 
-	// In group chats, apply unified group trigger filtering
-	if message.Chat.Type != "private" {
-		isMentioned := c.isBotMentioned(message)
-		if isMentioned {
-			content = c.stripBotMention(content)
-		}
-		respond, cleaned := c.ShouldRespondInGroup(isMentioned, content)
-		if !respond {
-			return nil
-		}
-		content = cleaned
-	}
-
 	// For forum topics, embed the thread ID as "chatID/threadID" so replies
 	// route to the correct topic and each topic gets its own session.
 	// Only forum groups (IsForum) are handled; regular group reply threads
@@ -668,6 +655,27 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, message *telego.Mes
 	threadID := message.MessageThreadID
 	if message.Chat.IsForum && threadID != 0 {
 		compositeChatID = fmt.Sprintf("%d/%d", chatID, threadID)
+	}
+
+	// In group chats, apply unified group trigger filtering
+	if message.Chat.Type != "private" {
+		isMentioned := c.isBotMentioned(message)
+		if isMentioned {
+			content = c.stripBotMention(content)
+		}
+		respond, cleaned := c.ShouldRespondInGroup(isMentioned, content)
+		if !respond {
+			observePeer := bus.Peer{Kind: "group", ID: compositeChatID}
+			observeMeta := map[string]string{
+				"user_id":    platformID,
+				"username":   user.Username,
+				"first_name": user.FirstName,
+				"is_group":   "true",
+			}
+			c.ObserveGroupMessage(ctx, observePeer, messageIDStr, platformID, compositeChatID, content, mediaPaths, observeMeta, sender)
+			return nil
+		}
+		content = cleaned
 	}
 
 	logger.DebugCF("telegram", "Received message", map[string]any{

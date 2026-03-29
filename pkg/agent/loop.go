@@ -1288,6 +1288,11 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 		return al.processSystemMessage(ctx, msg)
 	}
 
+	// Observe-only messages are stored in session history but do not trigger a response.
+	if msg.ObserveOnly {
+		return al.observeMessage(ctx, msg)
+	}
+
 	route, agent, routeErr := al.resolveMessageRoute(msg)
 	if routeErr != nil {
 		return "", routeErr
@@ -1343,6 +1348,57 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 	}
 
 	return al.runAgentLoop(ctx, agent, opts)
+}
+
+// observeMessage records an observe-only group message into session history without calling the LLM.
+// It is invoked when a channel publishes a message with ObserveOnly=true (i.e. the bot is not
+// mentioned in mention_only mode). Context is retained so the bot can reference the full
+// conversation when it is later @mentioned.
+func (al *AgentLoop) observeMessage(ctx context.Context, msg bus.InboundMessage) (string, error) {
+	route, agent, err := al.resolveMessageRoute(msg)
+	if err != nil {
+		logger.DebugCF("agent", "observeMessage: failed to resolve route, skipping", map[string]any{
+			"channel": msg.Channel,
+			"error":   err.Error(),
+		})
+		return "", nil
+	}
+
+	sessionKey := resolveScopeKey(route, msg.SessionKey)
+
+	// Attribute the message to its sender so the agent has full context when later mentioned.
+	senderName := msg.Sender.DisplayName
+	if senderName == "" {
+		senderName = msg.SenderID
+	}
+	content := msg.Content
+	if content == "" && len(msg.Media) > 0 {
+		content = "[media]"
+	}
+	if senderName != "" && content != "" {
+		content = fmt.Sprintf("[%s]: %s", senderName, content)
+	}
+
+	if content == "" {
+		return "", nil
+	}
+
+	agent.Sessions.AddMessage(sessionKey, "user", content)
+	if saveErr := agent.Sessions.Save(sessionKey); saveErr != nil {
+		logger.DebugCF("agent", "observeMessage: failed to save session", map[string]any{
+			"session_key": sessionKey,
+			"error":       saveErr.Error(),
+		})
+	}
+
+	logger.DebugCF("agent", "Observed group message (no response)", map[string]any{
+		"channel":     msg.Channel,
+		"session_key": sessionKey,
+		"sender":      senderName,
+		"preview":     utils.Truncate(content, 60),
+	})
+
+	return "", nil
 }
 
 func (al *AgentLoop) resolveMessageRoute(msg bus.InboundMessage) (routing.ResolvedRoute, *AgentInstance, error) {

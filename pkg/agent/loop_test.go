@@ -2926,3 +2926,131 @@ func TestProcessMessage_ContextOverflow_AnthropicStyle(t *testing.T) {
 		t.Fatalf("expected 2 calls for retry, got %d", provider.calls)
 	}
 }
+
+func TestObserveOnlyMessage_AddsToHistoryWithoutLLMCall(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{
+		Agents: config.AgentsConfig{
+			Defaults: config.AgentDefaults{
+				Workspace:         tmpDir,
+				ModelName:         "test-model",
+				MaxTokens:         4096,
+				MaxToolIterations: 10,
+			},
+		},
+		Session: config.SessionConfig{
+			DMScope: "per-channel-peer",
+		},
+	}
+
+	msgBus := bus.NewMessageBus()
+	provider := &countingMockProvider{response: "LLM reply"}
+	al := NewAgentLoop(cfg, msgBus, provider)
+
+	observeMsg := bus.InboundMessage{
+		Channel:  "telegram",
+		SenderID: "telegram:user1",
+		Sender: bus.SenderInfo{
+			Platform:    "telegram",
+			PlatformID:  "user1",
+			CanonicalID: "telegram:user1",
+			DisplayName: "Alice",
+		},
+		ChatID:      "group42",
+		Content:     "we should meet at 3pm",
+		Peer:        bus.Peer{Kind: "group", ID: "group42"},
+		ObserveOnly: true,
+	}
+
+	// Compute session key before processing
+	route := al.registry.ResolveRoute(routing.RouteInput{
+		Channel: observeMsg.Channel,
+		Peer:    extractPeer(observeMsg),
+	})
+	sessionKey := route.SessionKey
+
+	_, err := al.processMessage(context.Background(), observeMsg)
+	if err != nil {
+		t.Fatalf("processMessage() error = %v", err)
+	}
+
+	// LLM must NOT have been called for an observe-only message
+	if provider.calls != 0 {
+		t.Fatalf("expected 0 LLM calls for observe-only message, got %d", provider.calls)
+	}
+
+	// No outbound response should have been sent
+	select {
+	case msg := <-msgBus.OutboundChan():
+		t.Fatalf("expected no outbound message for observe-only, got %+v", msg)
+	default:
+	}
+
+	// The message should have been added to session history with sender attribution
+	defaultAgent := al.registry.GetDefaultAgent()
+	if defaultAgent == nil {
+		t.Fatal("expected default agent")
+	}
+	history := defaultAgent.Sessions.GetHistory(sessionKey)
+	if len(history) == 0 {
+		t.Fatal("expected observe-only message to be stored in session history")
+	}
+	last := history[len(history)-1]
+	if last.Role != "user" {
+		t.Fatalf("expected role 'user', got %q", last.Role)
+	}
+	if !strings.Contains(last.Content, "Alice") || !strings.Contains(last.Content, "we should meet at 3pm") {
+		t.Fatalf("expected sender attribution and content in history, got %q", last.Content)
+	}
+}
+
+func TestObserveOnlyMessage_DoesNotRespondEvenWithContinuation(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{
+		Agents: config.AgentsConfig{
+			Defaults: config.AgentDefaults{
+				Workspace:         tmpDir,
+				ModelName:         "test-model",
+				MaxTokens:         4096,
+				MaxToolIterations: 10,
+			},
+		},
+	}
+
+	msgBus := bus.NewMessageBus()
+	provider := &countingMockProvider{response: "LLM reply"}
+	al := NewAgentLoop(cfg, msgBus, provider)
+
+	// Send multiple observe-only messages
+	for _, content := range []string{"msg1", "msg2", "msg3"} {
+		msg := bus.InboundMessage{
+			Channel:     "slack",
+			SenderID:    "slack:userA",
+			ChatID:      "channel1",
+			Content:     content,
+			Peer:        bus.Peer{Kind: "channel", ID: "channel1"},
+			ObserveOnly: true,
+		}
+		if _, err := al.processMessage(context.Background(), msg); err != nil {
+			t.Fatalf("processMessage(%q) error = %v", content, err)
+		}
+	}
+
+	if provider.calls != 0 {
+		t.Fatalf("expected 0 LLM calls for observe-only messages, got %d", provider.calls)
+	}
+
+	// Confirm history accumulated
+	route := al.registry.ResolveRoute(routing.RouteInput{
+		Channel: "slack",
+		Peer:    bus.Peer{Kind: "channel", ID: "channel1"},
+	})
+	defaultAgent := al.registry.GetDefaultAgent()
+	if defaultAgent == nil {
+		t.Fatal("expected default agent")
+	}
+	history := defaultAgent.Sessions.GetHistory(route.SessionKey)
+	if len(history) != 3 {
+		t.Fatalf("expected 3 observed messages in history, got %d", len(history))
+	}
+}
