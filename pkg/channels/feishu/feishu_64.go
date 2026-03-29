@@ -463,6 +463,7 @@ func (c *FeishuChannel) handleMessageReceive(ctx context.Context, event *larkim.
 		// In group chats, apply unified group trigger filtering
 		respond, cleaned := c.ShouldRespondInGroup(isMentioned, content)
 		if !respond {
+			c.ObserveGroupMessage(ctx, peer, messageID, senderID, chatID, content, mediaRefs, metadata, senderInfo)
 			return nil
 		}
 		content = cleaned
