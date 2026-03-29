@@ -1030,6 +1030,13 @@ func (c *OneBotChannel) handleMessage(raw *oneBotRawEvent) {
 				"is_mentioned": isBotMentioned,
 				"content":      truncate(content, 100),
 			})
+			observeSenderInfo := bus.SenderInfo{
+				Platform:    "onebot",
+				PlatformID:  senderID,
+				CanonicalID: identity.BuildCanonicalID("onebot", senderID),
+				DisplayName: sender.Nickname,
+			}
+			c.ObserveGroupMessage(c.ctx, peer, messageID, senderID, chatID, content, nil, metadata, observeSenderInfo)
 			return
 		}
 		content = strippedContent

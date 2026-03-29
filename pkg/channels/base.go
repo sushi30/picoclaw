@@ -329,6 +329,62 @@ func (c *BaseChannel) HandleMessage(
 	}
 }
 
+// ObserveGroupMessage records a group message into conversation history without triggering a response.
+// It is called when ShouldRespondInGroup returns false but the message should still be retained
+// as context (e.g. mention_only mode). Unlike HandleMessage, it does not start typing indicators,
+// reactions, or placeholder messages.
+func (c *BaseChannel) ObserveGroupMessage(
+	ctx context.Context,
+	peer bus.Peer,
+	messageID, senderID, chatID, content string,
+	media []string,
+	metadata map[string]string,
+	senderOpts ...bus.SenderInfo,
+) {
+	var sender bus.SenderInfo
+	if len(senderOpts) > 0 {
+		sender = senderOpts[0]
+	}
+	if sender.CanonicalID != "" || sender.PlatformID != "" {
+		if !c.IsAllowedSender(sender) {
+			return
+		}
+	} else {
+		if !c.IsAllowed(senderID) {
+			return
+		}
+	}
+
+	resolvedSenderID := senderID
+	if sender.CanonicalID != "" {
+		resolvedSenderID = sender.CanonicalID
+	}
+
+	scope := BuildMediaScope(c.name, chatID, messageID)
+
+	msg := bus.InboundMessage{
+		Channel:     c.name,
+		SenderID:    resolvedSenderID,
+		Sender:      sender,
+		ChatID:      chatID,
+		Content:     content,
+		Media:       media,
+		Peer:        peer,
+		MessageID:   messageID,
+		MediaScope:  scope,
+		Metadata:    metadata,
+		ObserveOnly: true,
+	}
+
+	if err := c.bus.PublishInbound(ctx, msg); err != nil {
+		logger.DebugCF("channels", "Failed to publish observed group message", map[string]any{
+			"channel": c.name,
+			"chat_id": chatID,
+			"error":   err.Error(),
+		})
+	}
+}
+
 func (c *BaseChannel) SetRunning(running bool) {
 	c.running.Store(running)
 }
