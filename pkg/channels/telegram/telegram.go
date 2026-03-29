@@ -690,6 +690,16 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, message *telego.Mes
 		content = "[media only]"
 	}
 
+	// For forum topics, embed the thread ID as "chatID/threadID" so replies
+	// route to the correct topic and each topic gets its own session.
+	// Only forum groups (IsForum) are handled; regular group reply threads
+	// must share one session per group.
+	compositeChatID := fmt.Sprintf("%d", chatID)
+	threadID := message.MessageThreadID
+	if message.Chat.IsForum && threadID != 0 {
+		compositeChatID = fmt.Sprintf("%d/%d", chatID, threadID)
+	}
+
 	// In group chats, apply unified group trigger filtering
 	if message.Chat.Type != "private" {
 		isMentioned := c.isBotMentioned(message)
@@ -698,6 +708,14 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, message *telego.Mes
 		}
 		respond, cleaned := c.ShouldRespondInGroup(isMentioned, content)
 		if !respond {
+			observePeer := bus.Peer{Kind: "group", ID: compositeChatID}
+			observeMeta := map[string]string{
+				"user_id":    platformID,
+				"username":   user.Username,
+				"first_name": user.FirstName,
+				"is_group":   "true",
+			}
+			c.ObserveGroupMessage(ctx, observePeer, messageIDStr, platformID, compositeChatID, content, mediaPaths, observeMeta, sender)
 			return nil
 		}
 		content = cleaned
@@ -718,16 +736,6 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, message *telego.Mes
 			mediaPaths = append(quotedMedia, mediaPaths...)
 		}
 		content = c.prependTelegramQuotedReply(content, message.ReplyToMessage)
-	}
-
-	// For forum topics, embed the thread ID as "chatID/threadID" so replies
-	// route to the correct topic and each topic gets its own session.
-	// Only forum groups (IsForum) are handled; regular group reply threads
-	// must share one session per group.
-	compositeChatID := fmt.Sprintf("%d", chatID)
-	threadID := message.MessageThreadID
-	if message.Chat.IsForum && threadID != 0 {
-		compositeChatID = fmt.Sprintf("%d/%d", chatID, threadID)
 	}
 
 	logger.DebugCF("telegram", "Received message", map[string]any{
