@@ -40,7 +40,7 @@ jobs:
       - name: Attempt rebase of sushi30 onto main
         id: rebase
         run: |
-          git checkout -b sushi30 origin/sushi30
+          git checkout -B sushi30 origin/sushi30
           if git rebase refs/remotes/origin/main; then
             echo "status=success" >> "$GITHUB_OUTPUT"
           else
