@@ -68,7 +68,10 @@ func NewWhatsAppNativeChannel(
 	bus *bus.MessageBus,
 	storePath string,
 ) (channels.Channel, error) {
-	base := channels.NewBaseChannel("whatsapp_native", cfg, bus, cfg.AllowFrom, channels.WithMaxMessageLength(65536))
+	base := channels.NewBaseChannel("whatsapp_native", cfg, bus, cfg.AllowFrom,
+		channels.WithMaxMessageLength(65536),
+		channels.WithGroupTrigger(cfg.GroupTrigger),
+	)
 	if storePath == "" {
 		storePath = "whatsapp"
 	}
@@ -384,6 +387,10 @@ func (c *WhatsAppNativeChannel) handleIncoming(evt *events.Message) {
 		DisplayName: evt.Info.PushName,
 	}
 
+	if evt.Info.IsFromMe {
+		return
+	}
+
 	if !c.IsAllowedSender(sender) {
 		logger.DebugCF("whatsapp", "WhatsApp message blocked (not in allow_from)", map[string]any{"sender_id": senderID})
 		return
@@ -394,7 +401,43 @@ func (c *WhatsAppNativeChannel) handleIncoming(evt *events.Message) {
 		"WhatsApp message received",
 		map[string]any{"sender_id": senderID, "content_preview": utils.Truncate(content, 50)},
 	)
+
+	if peer.Kind == "group" {
+		isMentioned := c.isBotMentioned(evt)
+		respond, cleaned := c.ShouldRespondInGroup(isMentioned, content)
+		if !respond {
+			c.ObserveGroupMessage(c.runCtx, peer, messageID, senderID, chatID, content, mediaPaths, metadata, sender)
+			return
+		}
+		content = cleaned
+	}
+
 	c.HandleMessage(c.runCtx, peer, messageID, senderID, chatID, content, mediaPaths, metadata, sender)
+}
+
+// isBotMentioned checks whether the bot's own JID appears in the mentioned JIDs of the message.
+func (c *WhatsAppNativeChannel) isBotMentioned(evt *events.Message) bool {
+	c.mu.Lock()
+	client := c.client
+	c.mu.Unlock()
+	if client == nil || client.Store.ID == nil {
+		return false
+	}
+	botUser := client.Store.ID.User
+
+	var mentionedJIDs []string
+	if ext := evt.Message.GetExtendedTextMessage(); ext != nil {
+		if ctx := ext.GetContextInfo(); ctx != nil {
+			mentionedJIDs = ctx.GetMentionedJID()
+		}
+	}
+	for _, jidStr := range mentionedJIDs {
+		mentioned, err := types.ParseJID(jidStr)
+		if err == nil && mentioned.User == botUser {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *WhatsAppNativeChannel) Send(ctx context.Context, msg bus.OutboundMessage) error {
