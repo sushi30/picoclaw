@@ -35,16 +35,13 @@ jobs:
           git fetch origin
 
       - name: Sync main from upstream
-        run: |
-          git checkout main
-          git reset --hard upstream/main
-          git push origin main
+        run: git push origin upstream/main:main
 
       - name: Attempt rebase of sushi30 onto main
         id: rebase
         run: |
           git checkout -b sushi30 origin/sushi30
-          if git rebase origin/main; then
+          if git rebase refs/remotes/origin/main; then
             echo "status=success" >> "$GITHUB_OUTPUT"
           else
             CONFLICTS=$(git diff --name-only --diff-filter=U | tr '\n' ' ')
