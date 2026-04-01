@@ -224,16 +224,19 @@ func (c *WhatsAppChannel) handleIncomingMessage(msg map[string]any) {
 		metadata["user_name"] = userName
 	}
 
+	isGroup := chatID != senderID
+
 	var peer bus.Peer
-	if chatID == senderID {
+	if !isGroup {
 		peer = bus.Peer{Kind: "direct", ID: senderID}
 	} else {
 		peer = bus.Peer{Kind: "group", ID: chatID}
 	}
 
 	logger.InfoCF("whatsapp", "WhatsApp message received", map[string]any{
-		"sender":  senderID,
-		"preview": utils.Truncate(content, 50),
+		"sender":   senderID,
+		"preview":  utils.Truncate(content, 50),
+		"is_group": isGroup,
 	})
 
 	sender := bus.SenderInfo{
@@ -249,21 +252,14 @@ func (c *WhatsAppChannel) handleIncomingMessage(msg map[string]any) {
 		return
 	}
 
-	// In group chats, apply unified group trigger filtering.
-	// Mention detection: check if the "mentions" field in the message payload
-	// contains the sender's own JID (proxy for being mentioned by others),
-	// or use false when no mention info is available.
-	if peer.Kind == "group" {
+	// In group chats, apply group trigger filtering.
+	// The bridge may signal a bot mention via a "mentioned" bool or a non-empty "mentions" array.
+	if isGroup {
 		isMentioned := false
-		if mentionList, ok := msg["mentions"].([]any); ok {
-			for _, m := range mentionList {
-				if jid, ok := m.(string); ok && jid != "" {
-					// Any mention in the payload counts as the bot being addressed
-					_ = jid
-					isMentioned = true
-					break
-				}
-			}
+		if v, ok := msg["mentioned"].(bool); ok {
+			isMentioned = v
+		} else if mentions, ok := msg["mentions"].([]any); ok && len(mentions) > 0 {
+			isMentioned = true
 		}
 		respond, cleaned := c.ShouldRespondInGroup(isMentioned, content)
 		if !respond {
