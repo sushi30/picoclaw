@@ -68,7 +68,10 @@ func NewWhatsAppNativeChannel(
 	bus *bus.MessageBus,
 	storePath string,
 ) (channels.Channel, error) {
-	base := channels.NewBaseChannel("whatsapp_native", cfg, bus, cfg.AllowFrom, channels.WithMaxMessageLength(65536))
+	base := channels.NewBaseChannel("whatsapp_native", cfg, bus, cfg.AllowFrom,
+		channels.WithMaxMessageLength(65536),
+		channels.WithGroupTrigger(cfg.GroupTrigger),
+	)
 	if storePath == "" {
 		storePath = "whatsapp"
 	}
@@ -393,11 +396,41 @@ func (c *WhatsAppNativeChannel) handleIncoming(evt *events.Message) {
 		return
 	}
 
+	isGroup := evt.Info.Chat.Server == types.GroupServer
+
 	logger.DebugCF(
 		"whatsapp",
 		"WhatsApp message received",
-		map[string]any{"sender_id": senderID, "content_preview": utils.Truncate(content, 50)},
+		map[string]any{"sender_id": senderID, "content_preview": utils.Truncate(content, 50), "is_group": isGroup},
 	)
+
+	if isGroup {
+		// Detect bot mention via ContextInfo.MentionedJID (populated for @mentions in groups).
+		isMentioned := false
+		c.mu.Lock()
+		botJID := c.client.Store.ID
+		c.mu.Unlock()
+		var ctx2 *waE2E.ContextInfo
+		if ext := evt.Message.GetExtendedTextMessage(); ext != nil {
+			ctx2 = ext.GetContextInfo()
+		}
+		if ctx2 != nil && botJID != nil {
+			botUser := botJID.User
+			for _, jid := range ctx2.GetMentionedJID() {
+				if strings.HasPrefix(jid, botUser+"@") || jid == botUser {
+					isMentioned = true
+					break
+				}
+			}
+		}
+		respond, cleaned := c.ShouldRespondInGroup(isMentioned, content)
+		if !respond {
+			c.ObserveGroupMessage(c.runCtx, peer, messageID, senderID, chatID, content, mediaPaths, metadata, sender)
+			return
+		}
+		content = cleaned
+	}
+
 	c.HandleMessage(c.runCtx, peer, messageID, senderID, chatID, content, mediaPaths, metadata, sender)
 }
 
