@@ -10,6 +10,7 @@ package whatsapp
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -28,11 +29,13 @@ import (
 	"google.golang.org/protobuf/proto"
 	_ "modernc.org/sqlite"
 
+	"github.com/google/uuid"
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/channels"
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/identity"
 	"github.com/sipeed/picoclaw/pkg/logger"
+	"github.com/sipeed/picoclaw/pkg/media"
 	"github.com/sipeed/picoclaw/pkg/utils"
 )
 
@@ -353,13 +356,53 @@ func (c *WhatsAppNativeChannel) handleIncoming(evt *events.Message) {
 	if content == "" && evt.Message.ExtendedTextMessage != nil {
 		content = evt.Message.ExtendedTextMessage.GetText()
 	}
-	content = utils.SanitizeMessageContent(content)
 
+	// Extract caption from media sub-messages when there is no plain-text body.
 	if content == "" {
-		return
+		switch {
+		case evt.Message.GetImageMessage() != nil:
+			content = evt.Message.GetImageMessage().GetCaption()
+		case evt.Message.GetVideoMessage() != nil:
+			content = evt.Message.GetVideoMessage().GetCaption()
+		case evt.Message.GetDocumentMessage() != nil:
+			content = evt.Message.GetDocumentMessage().GetCaption()
+		}
 	}
 
+	content = utils.SanitizeMessageContent(content)
+
 	var mediaPaths []string
+
+	// Download media attachment, if present and a MediaStore is configured.
+	if store := c.GetMediaStore(); store != nil {
+		data, err := c.client.DownloadAny(c.runCtx, evt.Message)
+		if err != nil && !errors.Is(err, whatsmeow.ErrNothingDownloadableFound) {
+			logger.DebugCF("whatsapp", "media download failed", map[string]any{"err": err})
+		}
+		if err == nil && len(data) > 0 {
+			filename, mimetype := mediaFilenameAndMIME(evt.Message)
+			mediaDir := media.TempDir()
+			if mkErr := os.MkdirAll(mediaDir, 0o700); mkErr == nil {
+				localPath := filepath.Join(mediaDir, uuid.New().String()[:8]+"_"+filename)
+				if writeErr := os.WriteFile(localPath, data, 0o600); writeErr == nil {
+					scope := channels.BuildMediaScope("whatsapp", chatID, evt.Info.ID)
+					ref, storeErr := store.Store(localPath, media.MediaMeta{
+						Filename:      filename,
+						ContentType:   mimetype,
+						Source:        "whatsapp",
+						CleanupPolicy: media.CleanupPolicyDeleteOnCleanup,
+					}, scope)
+					if storeErr == nil {
+						mediaPaths = append(mediaPaths, ref)
+					}
+				}
+			}
+		}
+	}
+
+	if content == "" && len(mediaPaths) == 0 {
+		return
+	}
 
 	metadata := make(map[string]string)
 	metadata["message_id"] = evt.Info.ID
@@ -432,6 +475,52 @@ func (c *WhatsAppNativeChannel) handleIncoming(evt *events.Message) {
 	}
 
 	c.HandleMessage(c.runCtx, peer, messageID, senderID, chatID, content, mediaPaths, metadata, sender)
+}
+
+// mediaFilenameAndMIME returns a safe filename and MIME type for the media
+// contained in msg. It inspects sub-message types in the same order that
+// whatsmeow's DownloadAny does.
+func mediaFilenameAndMIME(msg *waE2E.Message) (filename, mimetype string) {
+	if img := msg.GetImageMessage(); img != nil {
+		mime := img.GetMimetype()
+		if mime == "" {
+			mime = "image/jpeg"
+		}
+		return "image.jpg", mime
+	}
+	if vid := msg.GetVideoMessage(); vid != nil {
+		mime := vid.GetMimetype()
+		if mime == "" {
+			mime = "video/mp4"
+		}
+		return "video.mp4", mime
+	}
+	if aud := msg.GetAudioMessage(); aud != nil {
+		mime := aud.GetMimetype()
+		if mime == "" {
+			mime = "audio/ogg"
+		}
+		return "audio.ogg", mime
+	}
+	if doc := msg.GetDocumentMessage(); doc != nil {
+		mime := doc.GetMimetype()
+		if mime == "" {
+			mime = "application/octet-stream"
+		}
+		name := doc.GetFileName()
+		if name == "" {
+			name = "document"
+		}
+		return utils.SanitizeFilename(name), mime
+	}
+	if stk := msg.GetStickerMessage(); stk != nil {
+		mime := stk.GetMimetype()
+		if mime == "" {
+			mime = "image/webp"
+		}
+		return "sticker.webp", mime
+	}
+	return "media", "application/octet-stream"
 }
 
 func (c *WhatsAppNativeChannel) Send(ctx context.Context, msg bus.OutboundMessage) ([]string, error) {
