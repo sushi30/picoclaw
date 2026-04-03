@@ -58,6 +58,7 @@ type AgentLoop struct {
 	hookRuntime    hookRuntime
 	steering       *steeringQueue
 	pendingSkills  sync.Map
+	debugChats     sync.Map // key: chatID (string), value: struct{}; present = debug on
 	mu             sync.RWMutex
 
 	// Concurrent turn management (from HEAD)
@@ -2428,7 +2429,7 @@ turnLoop:
 			)
 
 			// Send tool feedback to chat channel if enabled (from HEAD)
-			if al.cfg.Agents.Defaults.IsToolFeedbackEnabled() &&
+			if (al.cfg.Agents.Defaults.IsToolFeedbackEnabled() || al.isDebugMode(ts.chatID)) &&
 				ts.channel != "" &&
 				!ts.opts.SuppressToolFeedback {
 				feedbackPreview := utils.Truncate(
@@ -3278,6 +3279,12 @@ func (al *AgentLoop) buildCommandsRuntime(agent *AgentInstance, opts *processOpt
 			agent.Sessions.Save(opts.SessionKey)
 			return nil
 		}
+		rt.SetDebugMode = func(enabled bool) {
+			if opts == nil {
+				return
+			}
+			al.setDebugMode(opts.ChatID, enabled)
+		}
 	}
 	return rt
 }
@@ -3347,6 +3354,27 @@ func (al *AgentLoop) clearPendingSkills(sessionKey string) {
 		return
 	}
 	al.pendingSkills.Delete(sessionKey)
+}
+
+func (al *AgentLoop) setDebugMode(chatID string, enabled bool) {
+	chatID = strings.TrimSpace(chatID)
+	if chatID == "" {
+		return
+	}
+	if enabled {
+		al.debugChats.Store(chatID, struct{}{})
+	} else {
+		al.debugChats.Delete(chatID)
+	}
+}
+
+func (al *AgentLoop) isDebugMode(chatID string) bool {
+	chatID = strings.TrimSpace(chatID)
+	if chatID == "" {
+		return false
+	}
+	_, ok := al.debugChats.Load(chatID)
+	return ok
 }
 
 func mapCommandError(result commands.ExecuteResult) string {

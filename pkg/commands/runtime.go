@@ -17,4 +17,5 @@ type Runtime struct {
 	SwitchChannel      func(value string) error
 	ClearHistory       func() error
 	ReloadConfig       func() error
+	SetDebugMode       func(enabled bool) // toggles per-chat debug mode
 }
