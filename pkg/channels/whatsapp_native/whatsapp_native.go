@@ -405,25 +405,20 @@ func (c *WhatsAppNativeChannel) handleIncoming(evt *events.Message) {
 	)
 
 	if isGroup {
-		// Detect bot mention via ContextInfo.MentionedJID (populated for @mentions in groups).
-		isMentioned := false
 		c.mu.Lock()
 		botJID := c.client.Store.ID
+		botLID := c.client.Store.GetLID()
 		c.mu.Unlock()
-		var ctx2 *waE2E.ContextInfo
-		if ext := evt.Message.GetExtendedTextMessage(); ext != nil {
-			ctx2 = ext.GetContextInfo()
+
+		var botUsers []string
+		if botJID != nil && botJID.User != "" {
+			botUsers = append(botUsers, botJID.User)
 		}
-		if ctx2 != nil && botJID != nil {
-			botUser := botJID.User
-			for _, jid := range ctx2.GetMentionedJID() {
-				if strings.HasPrefix(jid, botUser+"@") || jid == botUser {
-					isMentioned = true
-					break
-				}
-			}
+		if botLID.User != "" {
+			botUsers = append(botUsers, botLID.User)
 		}
-		respond, cleaned := c.ShouldRespondInGroup(isMentioned, content)
+
+		respond, cleaned := c.ShouldRespondInGroup(isMentionedInGroup(evt.Message, content, botUsers), content)
 		if !respond {
 			c.ObserveGroupMessage(c.runCtx, peer, messageID, senderID, chatID, content, mediaPaths, metadata, sender)
 			return
@@ -432,6 +427,42 @@ func (c *WhatsAppNativeChannel) handleIncoming(evt *events.Message) {
 	}
 
 	c.HandleMessage(c.runCtx, peer, messageID, senderID, chatID, content, mediaPaths, metadata, sender)
+}
+
+// isMentionedInGroup returns true if the bot is @mentioned in a group message.
+//
+// WhatsApp LID sessions expose two identifiers (phone JID and LID); botUsers should
+// contain the User portion of both so we match whichever format WhatsApp uses.
+//
+// Detection order:
+//  1. ContextInfo.MentionedJID — the authoritative signal (ExtendedTextMessage only).
+//  2. Text-based fallback — handles plain Conversation messages where ContextInfo
+//     is absent, which occurs in LID sessions for some WhatsApp clients.
+func isMentionedInGroup(msg *waE2E.Message, content string, botUsers []string) bool {
+	if len(botUsers) == 0 {
+		return false
+	}
+
+	// Primary: ContextInfo.MentionedJID
+	if ext := msg.GetExtendedTextMessage(); ext != nil {
+		if ctx2 := ext.GetContextInfo(); ctx2 != nil {
+			for _, jid := range ctx2.GetMentionedJID() {
+				for _, u := range botUsers {
+					if strings.HasPrefix(jid, u+"@") || jid == u {
+						return true
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback: @<user> in message text
+	for _, u := range botUsers {
+		if strings.Contains(content, "@"+u) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *WhatsAppNativeChannel) Send(ctx context.Context, msg bus.OutboundMessage) ([]string, error) {
