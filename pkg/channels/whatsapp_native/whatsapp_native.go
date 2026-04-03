@@ -59,6 +59,7 @@ type WhatsAppNativeChannel struct {
 	reconnecting bool
 	stopping     atomic.Bool    // set once Stop begins; prevents new wg.Add calls
 	wg           sync.WaitGroup // tracks background goroutines (QR handler, reconnect)
+	approver     *WhatsAppApprover
 }
 
 // NewWhatsAppNativeChannel creates a WhatsApp channel that uses whatsmeow for connection.
@@ -269,7 +270,21 @@ func (c *WhatsAppNativeChannel) Stop(ctx context.Context) error {
 func (c *WhatsAppNativeChannel) eventHandler(evt any) {
 	switch evt.(type) {
 	case *events.Message:
-		c.handleIncoming(evt.(*events.Message))
+		m := evt.(*events.Message)
+		if m.Message == nil {
+			return
+		}
+		// Interactive responses take priority over plain-text extraction.
+		if br := m.Message.GetButtonsResponseMessage(); br != nil {
+			c.handleInteractiveResponse(m, br.GetSelectedButtonId(), "button", br.GetSelectedDisplayText())
+			return
+		}
+		if lr := m.Message.GetListResponseMessage(); lr != nil {
+			sel := lr.GetSingleSelectReply()
+			c.handleInteractiveResponse(m, sel.GetSelectedRowId(), "list", sel.GetTitle())
+			return
+		}
+		c.handleIncoming(m)
 	case *events.Disconnected:
 		logger.InfoCF("whatsapp", "WhatsApp disconnected, will attempt reconnection", nil)
 		c.reconnectMu.Lock()
@@ -425,14 +440,87 @@ func (c *WhatsAppNativeChannel) Send(ctx context.Context, msg bus.OutboundMessag
 		return nil, fmt.Errorf("invalid chat id %q: %w", msg.ChatID, err)
 	}
 
-	waMsg := &waE2E.Message{
-		Conversation: proto.String(msg.Content),
+	waMsg, err := buildInteractiveMessage(msg)
+	if err != nil {
+		return nil, fmt.Errorf("build interactive message: %w", err)
+	}
+	if waMsg == nil {
+		waMsg = &waE2E.Message{Conversation: proto.String(msg.Content)}
 	}
 
 	if _, err = client.SendMessage(ctx, to, waMsg); err != nil {
 		return nil, fmt.Errorf("whatsapp send: %w", channels.ErrTemporary)
 	}
 	return nil, nil
+}
+
+// handleInteractiveResponse processes a button or list-selection tap from the
+// user. It notifies the approver (if one is registered) and then forwards the
+// selection as a normal inbound message so the agent loop can react to it.
+// Content of the resulting InboundMessage is the selected button/row ID,
+// giving the LLM a clean, code-friendly value to match on.
+func (c *WhatsAppNativeChannel) handleInteractiveResponse(
+	evt *events.Message, selectedID, interactiveType, displayText string,
+) {
+	if selectedID == "" {
+		return
+	}
+	senderID := evt.Info.Sender.String()
+	chatID := evt.Info.Chat.String()
+
+	metadata := make(map[string]string)
+	metadata["message_id"] = evt.Info.ID
+	if evt.Info.PushName != "" {
+		metadata["user_name"] = evt.Info.PushName
+	}
+	peerKind := "direct"
+	if evt.Info.Chat.Server == types.GroupServer {
+		peerKind = "group"
+	}
+	metadata["peer_kind"] = peerKind
+	metadata["peer_id"] = chatID
+	metadata["wa_interactive_type"] = interactiveType
+	metadata["wa_interactive_selected_id"] = selectedID
+	metadata["wa_interactive_display_text"] = displayText
+
+	peer := bus.Peer{Kind: peerKind, ID: chatID}
+	sender := bus.SenderInfo{
+		Platform:    "whatsapp",
+		PlatformID:  senderID,
+		CanonicalID: identity.BuildCanonicalID("whatsapp", senderID),
+		DisplayName: evt.Info.PushName,
+	}
+
+	if !c.IsAllowedSender(sender) {
+		return
+	}
+
+	logger.DebugCF(
+		"whatsapp",
+		"WhatsApp interactive response received",
+		map[string]any{
+			"type":        interactiveType,
+			"selected_id": selectedID,
+			"sender_id":   senderID,
+		},
+	)
+
+	// Let the approver handle this first (no-op if ID doesn't match any
+	// pending approval request).
+	if c.approver != nil {
+		c.approver.Notify(selectedID)
+	}
+
+	// Forward as a normal inbound message so the agent loop sees the response.
+	c.HandleMessage(c.runCtx, peer, evt.Info.ID, senderID, chatID, selectedID, nil, metadata, sender)
+}
+
+// RegisterApprover mounts a WhatsAppApprover that will intercept tool
+// approval requests for whatsapp_native conversations and present the user
+// with Approve/Deny buttons. Call this after Start() and before the agent
+// loop begins processing messages.
+func (c *WhatsAppNativeChannel) RegisterApprover(ap *WhatsAppApprover) {
+	c.approver = ap
 }
 
 // parseJID converts a chat ID (phone number or JID string) to types.JID.
