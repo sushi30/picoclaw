@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/mdp/qrterminal/v3"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -358,19 +359,60 @@ func (c *WhatsAppNativeChannel) handleIncoming(evt *events.Message) {
 
 	var mediaPaths []string
 
-	// Detect voice/audio messages so they are processed even without accompanying text.
-	if audioMsg := evt.Message.GetAudioMessage(); audioMsg != nil {
-		scope := channels.BuildMediaScope("whatsapp_native", chatID, evt.Info.ID)
-		if ref := c.downloadVoice(c.runCtx, audioMsg, scope); ref != "" {
-			mediaPaths = append(mediaPaths, ref)
-			if content != "" {
-				content += "\n"
+	// storeMedia registers a downloaded local file with the MediaStore and returns
+	// a media ref (or the raw path as fallback when no store is configured).
+	storeMedia := func(localPath, filename string) string {
+		if store := c.GetMediaStore(); store != nil {
+			scope := channels.BuildMediaScope("whatsapp_native", chatID, evt.Info.ID)
+			ref, err := store.Store(localPath, media.MediaMeta{
+				Filename:      filename,
+				Source:        "whatsapp_native",
+				CleanupPolicy: media.CleanupPolicyDeleteOnCleanup,
+			}, scope)
+			if err == nil {
+				return ref
 			}
-			content += "[voice]"
+		}
+		return localPath
+	}
+
+	if img := evt.Message.GetImageMessage(); img != nil {
+		if localPath := c.downloadWAMedia(c.runCtx, img, "photo.jpg"); localPath != "" {
+			mediaPaths = append(mediaPaths, storeMedia(localPath, "photo.jpg"))
+			if caption := img.GetCaption(); caption != "" {
+				if content != "" {
+					content += "\n"
+				}
+				content += caption
+			} else if content == "" {
+				content = "[image]"
+			}
 		}
 	}
 
-	if content == "" {
+	if doc := evt.Message.GetDocumentMessage(); doc != nil {
+		filename := doc.GetFileName()
+		if filename == "" {
+			filename = "document"
+		}
+		if localPath := c.downloadWAMedia(c.runCtx, doc, filename); localPath != "" {
+			mediaPaths = append(mediaPaths, storeMedia(localPath, filename))
+			if content == "" {
+				content = "[file: " + filename + "]"
+			}
+		}
+	}
+
+	if audio := evt.Message.GetAudioMessage(); audio != nil {
+		if localPath := c.downloadWAMedia(c.runCtx, audio, "audio.ogg"); localPath != "" {
+			mediaPaths = append(mediaPaths, storeMedia(localPath, "audio.ogg"))
+			if content == "" {
+				content = "[voice]"
+			}
+		}
+	}
+
+	if content == "" && len(mediaPaths) == 0 {
 		return
 	}
 
@@ -481,52 +523,6 @@ func isMentionedInGroup(msg *waE2E.Message, content string, botUsers []string) b
 	return false
 }
 
-// downloadVoice downloads a WhatsApp AudioMessage, writes it to a temp OGG file, stores it in
-// the media store, and returns the media ref (or raw path if the store is unavailable).
-// Returns an empty string if the download fails.
-func (c *WhatsAppNativeChannel) downloadVoice(ctx context.Context, audioMsg *waE2E.AudioMessage, scope string) string {
-	c.mu.Lock()
-	client := c.client
-	c.mu.Unlock()
-
-	if client == nil {
-		return ""
-	}
-
-	data, err := client.Download(ctx, audioMsg)
-	if err != nil {
-		logger.ErrorCF("whatsapp", "Failed to download voice message", map[string]any{"error": err.Error()})
-		return ""
-	}
-
-	f, err := os.CreateTemp("", "wa-voice-*.ogg")
-	if err != nil {
-		logger.ErrorCF("whatsapp", "Failed to create temp file for voice message", map[string]any{"error": err.Error()})
-		return ""
-	}
-	defer f.Close()
-
-	if _, err = f.Write(data); err != nil {
-		logger.ErrorCF("whatsapp", "Failed to write voice message to temp file", map[string]any{"error": err.Error()})
-		return ""
-	}
-
-	store := c.GetMediaStore()
-	if store == nil {
-		return f.Name()
-	}
-
-	ref, err := store.Store(f.Name(), media.MediaMeta{
-		Filename:      "voice.ogg",
-		ContentType:   "audio/ogg",
-		Source:        "whatsapp_native",
-		CleanupPolicy: media.CleanupPolicyDeleteOnCleanup,
-	}, scope)
-	if err != nil {
-		return f.Name()
-	}
-	return ref
-}
 
 // VoiceCapabilities reports that this channel supports ASR (speech-to-text).
 func (c *WhatsAppNativeChannel) VoiceCapabilities() channels.VoiceCapabilities {
@@ -570,6 +566,46 @@ func (c *WhatsAppNativeChannel) Send(ctx context.Context, msg bus.OutboundMessag
 		return nil, fmt.Errorf("whatsapp send: %w", channels.ErrTemporary)
 	}
 	return nil, nil
+}
+
+// downloadWAMedia downloads and decrypts a WhatsApp media message using the
+// whatsmeow client, saves it to a temp file, and returns the local path.
+// Returns "" on any error (errors are logged at WARN level).
+func (c *WhatsAppNativeChannel) downloadWAMedia(
+	ctx context.Context,
+	msg whatsmeow.DownloadableMessage,
+	filename string,
+) string {
+	c.mu.Lock()
+	client := c.client
+	c.mu.Unlock()
+	if client == nil {
+		return ""
+	}
+
+	data, err := client.Download(ctx, msg)
+	if err != nil {
+		logger.WarnCF(
+			"whatsapp",
+			"Failed to download media",
+			map[string]any{"error": err.Error(), "filename": filename},
+		)
+		return ""
+	}
+
+	mediaDir := media.TempDir()
+	if err := os.MkdirAll(mediaDir, 0o700); err != nil {
+		logger.WarnCF("whatsapp", "Failed to create media dir", map[string]any{"error": err.Error()})
+		return ""
+	}
+
+	localPath := filepath.Join(mediaDir, uuid.New().String()[:8]+"_"+utils.SanitizeFilename(filename))
+	if err := os.WriteFile(localPath, data, 0o600); err != nil {
+		logger.WarnCF("whatsapp", "Failed to write media file", map[string]any{"error": err.Error()})
+		return ""
+	}
+
+	return localPath
 }
 
 // parseJID converts a chat ID (phone number or JID string) to types.JID.
