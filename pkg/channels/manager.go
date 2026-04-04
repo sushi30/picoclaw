@@ -695,6 +695,14 @@ func (m *Manager) runWorker(ctx context.Context, name string, w *channelWorker) 
 			if !ok {
 				return
 			}
+			// Interactive messages (e.g. WhatsApp buttons/lists) must be
+			// delivered as a single unit — splitting would corrupt the
+			// payload. Dispatch directly and skip all chunking logic.
+			if msg.Metadata["wa_interactive_type"] != "" {
+				m.sendWithRetry(ctx, name, w, msg)
+				continue
+			}
+
 			maxLen := 0
 			if mlp, ok := w.ch.(MessageLengthProvider); ok {
 				maxLen = mlp.MaxMessageLength()
