@@ -100,7 +100,6 @@ func main() {
 		}
 	}
 
-
 	if err := runCommand(os.Stdout, os.Args[1:]); err != nil {
 		os.Exit(1)
 	}
