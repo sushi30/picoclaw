@@ -343,6 +343,7 @@ type WhatsAppConfig struct {
 	AllowFrom          FlexibleStringSlice `json:"allow_from"              yaml:"-" env:"PICOCLAW_CHANNELS_WHATSAPP_ALLOW_FROM"`
 	GroupTrigger       GroupTriggerConfig  `json:"group_trigger,omitempty" yaml:"-"`
 	ReasoningChannelID string              `json:"reasoning_channel_id"    yaml:"-" env:"PICOCLAW_CHANNELS_WHATSAPP_REASONING_CHANNEL_ID"`
+	EchoTranscription  bool                `json:"echo_transcription"      yaml:"-" env:"PICOCLAW_CHANNELS_WHATSAPP_ECHO_TRANSCRIPTION"`
 }
 
 type TelegramConfig struct {
