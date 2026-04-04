@@ -41,12 +41,13 @@ func DefaultConfig() *Config {
 		},
 		Channels: ChannelsConfig{
 			WhatsApp: WhatsAppConfig{
-				Enabled:          false,
-				BridgeURL:        "ws://localhost:3001",
-				UseNative:        false,
-				SessionStorePath: "",
-				AllowFrom:        FlexibleStringSlice{},
-				GroupTrigger:     GroupTriggerConfig{MentionOnly: false},
+				Enabled:           false,
+				BridgeURL:         "ws://localhost:3001",
+				UseNative:         false,
+				SessionStorePath:  "",
+				AllowFrom:         FlexibleStringSlice{},
+				GroupTrigger:      GroupTriggerConfig{MentionOnly: false},
+				EchoTranscription: false,
 			},
 			Telegram: TelegramConfig{
 				Enabled:      false,

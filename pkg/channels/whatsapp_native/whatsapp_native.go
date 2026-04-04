@@ -33,6 +33,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/identity"
 	"github.com/sipeed/picoclaw/pkg/logger"
+	"github.com/sipeed/picoclaw/pkg/media"
 	"github.com/sipeed/picoclaw/pkg/utils"
 )
 
@@ -355,11 +356,23 @@ func (c *WhatsAppNativeChannel) handleIncoming(evt *events.Message) {
 	}
 	content = utils.SanitizeMessageContent(content)
 
+	var mediaPaths []string
+
+	// Detect voice/audio messages so they are processed even without accompanying text.
+	if audioMsg := evt.Message.GetAudioMessage(); audioMsg != nil {
+		scope := channels.BuildMediaScope("whatsapp_native", chatID, evt.Info.ID)
+		if ref := c.downloadVoice(c.runCtx, audioMsg, scope); ref != "" {
+			mediaPaths = append(mediaPaths, ref)
+			if content != "" {
+				content += "\n"
+			}
+			content += "[voice]"
+		}
+	}
+
 	if content == "" {
 		return
 	}
-
-	var mediaPaths []string
 
 	metadata := make(map[string]string)
 	metadata["message_id"] = evt.Info.ID
@@ -372,6 +385,9 @@ func (c *WhatsAppNativeChannel) handleIncoming(evt *events.Message) {
 	} else {
 		metadata["peer_kind"] = "direct"
 		metadata["peer_id"] = senderID
+	}
+	if len(mediaPaths) > 0 && c.config.EchoTranscription {
+		metadata["echo_transcription"] = "true"
 	}
 
 	peerKind := "direct"
@@ -463,6 +479,58 @@ func isMentionedInGroup(msg *waE2E.Message, content string, botUsers []string) b
 		}
 	}
 	return false
+}
+
+// downloadVoice downloads a WhatsApp AudioMessage, writes it to a temp OGG file, stores it in
+// the media store, and returns the media ref (or raw path if the store is unavailable).
+// Returns an empty string if the download fails.
+func (c *WhatsAppNativeChannel) downloadVoice(ctx context.Context, audioMsg *waE2E.AudioMessage, scope string) string {
+	c.mu.Lock()
+	client := c.client
+	c.mu.Unlock()
+
+	if client == nil {
+		return ""
+	}
+
+	data, err := client.Download(ctx, audioMsg)
+	if err != nil {
+		logger.ErrorCF("whatsapp", "Failed to download voice message", map[string]any{"error": err.Error()})
+		return ""
+	}
+
+	f, err := os.CreateTemp("", "wa-voice-*.ogg")
+	if err != nil {
+		logger.ErrorCF("whatsapp", "Failed to create temp file for voice message", map[string]any{"error": err.Error()})
+		return ""
+	}
+	defer f.Close()
+
+	if _, err = f.Write(data); err != nil {
+		logger.ErrorCF("whatsapp", "Failed to write voice message to temp file", map[string]any{"error": err.Error()})
+		return ""
+	}
+
+	store := c.GetMediaStore()
+	if store == nil {
+		return f.Name()
+	}
+
+	ref, err := store.Store(f.Name(), media.MediaMeta{
+		Filename:      "voice.ogg",
+		ContentType:   "audio/ogg",
+		Source:        "whatsapp_native",
+		CleanupPolicy: media.CleanupPolicyDeleteOnCleanup,
+	}, scope)
+	if err != nil {
+		return f.Name()
+	}
+	return ref
+}
+
+// VoiceCapabilities reports that this channel supports ASR (speech-to-text).
+func (c *WhatsAppNativeChannel) VoiceCapabilities() channels.VoiceCapabilities {
+	return channels.VoiceCapabilities{ASR: true, TTS: false}
 }
 
 func (c *WhatsAppNativeChannel) Send(ctx context.Context, msg bus.OutboundMessage) ([]string, error) {

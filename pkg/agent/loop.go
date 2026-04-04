@@ -1162,7 +1162,7 @@ func (al *AgentLoop) transcribeAudioInMessage(ctx context.Context, msg bus.Inbou
 		return msg, false
 	}
 
-	al.sendTranscriptionFeedback(ctx, msg.Channel, msg.ChatID, msg.MessageID, transcriptions)
+	al.sendTranscriptionFeedback(ctx, msg.Channel, msg.ChatID, msg.MessageID, transcriptions, msg.Metadata["echo_transcription"] == "true")
 
 	// Replace audio annotations sequentially with transcriptions.
 	idx := 0
@@ -1198,8 +1198,9 @@ func (al *AgentLoop) sendTranscriptionFeedback(
 	ctx context.Context,
 	channel, chatID, messageID string,
 	validTexts []string,
+	forceEcho bool,
 ) {
-	if !al.cfg.Voice.EchoTranscription {
+	if !al.cfg.Voice.EchoTranscription && !forceEcho {
 		return
 	}
 	if al.channelManager == nil {
