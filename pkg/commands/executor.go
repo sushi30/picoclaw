@@ -44,7 +44,9 @@ func (e *Executor) Execute(ctx context.Context, req Request) ExecuteResult {
 
 	def, found := e.reg.Lookup(cmdName)
 	if !found {
-		return ExecuteResult{Outcome: OutcomePassthrough, Command: cmdName}
+		// Return an error for unrecognized commands instead of forwarding to LLM
+		err := req.Reply(fmt.Sprintf("Unknown command: %s", cmdName))
+		return ExecuteResult{Outcome: OutcomeHandled, Command: cmdName, Err: err}
 	}
 
 	return e.executeDefinition(ctx, req, def)
