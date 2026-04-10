@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/mdp/qrterminal/v3"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -33,6 +34,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/identity"
 	"github.com/sipeed/picoclaw/pkg/logger"
+	"github.com/sipeed/picoclaw/pkg/media"
 	"github.com/sipeed/picoclaw/pkg/utils"
 )
 
@@ -355,11 +357,64 @@ func (c *WhatsAppNativeChannel) handleIncoming(evt *events.Message) {
 	}
 	content = utils.SanitizeMessageContent(content)
 
-	if content == "" {
-		return
+	var mediaPaths []string
+
+	// storeMedia registers a downloaded local file with the MediaStore and returns
+	// a media ref (or the raw path as fallback when no store is configured).
+	storeMedia := func(localPath, filename string) string {
+		if store := c.GetMediaStore(); store != nil {
+			scope := channels.BuildMediaScope("whatsapp_native", chatID, evt.Info.ID)
+			ref, err := store.Store(localPath, media.MediaMeta{
+				Filename:      filename,
+				Source:        "whatsapp_native",
+				CleanupPolicy: media.CleanupPolicyDeleteOnCleanup,
+			}, scope)
+			if err == nil {
+				return ref
+			}
+		}
+		return localPath
 	}
 
-	var mediaPaths []string
+	if img := evt.Message.GetImageMessage(); img != nil {
+		if localPath := c.downloadWAMedia(c.runCtx, img, "photo.jpg"); localPath != "" {
+			mediaPaths = append(mediaPaths, storeMedia(localPath, "photo.jpg"))
+			if caption := img.GetCaption(); caption != "" {
+				if content != "" {
+					content += "\n"
+				}
+				content += caption
+			} else if content == "" {
+				content = "[image]"
+			}
+		}
+	}
+
+	if doc := evt.Message.GetDocumentMessage(); doc != nil {
+		filename := doc.GetFileName()
+		if filename == "" {
+			filename = "document"
+		}
+		if localPath := c.downloadWAMedia(c.runCtx, doc, filename); localPath != "" {
+			mediaPaths = append(mediaPaths, storeMedia(localPath, filename))
+			if content == "" {
+				content = "[file: " + filename + "]"
+			}
+		}
+	}
+
+	if audio := evt.Message.GetAudioMessage(); audio != nil {
+		if localPath := c.downloadWAMedia(c.runCtx, audio, "audio.ogg"); localPath != "" {
+			mediaPaths = append(mediaPaths, storeMedia(localPath, "audio.ogg"))
+			if content == "" {
+				content = "[voice]"
+			}
+		}
+	}
+
+	if content == "" && len(mediaPaths) == 0 {
+		return
+	}
 
 	metadata := make(map[string]string)
 	metadata["message_id"] = evt.Info.ID
@@ -372,6 +427,9 @@ func (c *WhatsAppNativeChannel) handleIncoming(evt *events.Message) {
 	} else {
 		metadata["peer_kind"] = "direct"
 		metadata["peer_id"] = senderID
+	}
+	if len(mediaPaths) > 0 && c.config.EchoTranscription {
+		metadata["echo_transcription"] = "true"
 	}
 
 	peerKind := "direct"
@@ -393,6 +451,7 @@ func (c *WhatsAppNativeChannel) handleIncoming(evt *events.Message) {
 			"WhatsApp message blocked (not in allow_from)",
 			map[string]any{"sender_id": senderID},
 		)
+		_, _ = c.Send(c.runCtx, bus.OutboundMessage{Channel: "whatsapp", ChatID: chatID, Content: channels.ForbiddenReplyText})
 		return
 	}
 
@@ -405,25 +464,20 @@ func (c *WhatsAppNativeChannel) handleIncoming(evt *events.Message) {
 	)
 
 	if isGroup {
-		// Detect bot mention via ContextInfo.MentionedJID (populated for @mentions in groups).
-		isMentioned := false
 		c.mu.Lock()
 		botJID := c.client.Store.ID
+		botLID := c.client.Store.GetLID()
 		c.mu.Unlock()
-		var ctx2 *waE2E.ContextInfo
-		if ext := evt.Message.GetExtendedTextMessage(); ext != nil {
-			ctx2 = ext.GetContextInfo()
+
+		var botUsers []string
+		if botJID != nil && botJID.User != "" {
+			botUsers = append(botUsers, botJID.User)
 		}
-		if ctx2 != nil && botJID != nil {
-			botUser := botJID.User
-			for _, jid := range ctx2.GetMentionedJID() {
-				if strings.HasPrefix(jid, botUser+"@") || jid == botUser {
-					isMentioned = true
-					break
-				}
-			}
+		if botLID.User != "" {
+			botUsers = append(botUsers, botLID.User)
 		}
-		respond, cleaned := c.ShouldRespondInGroup(isMentioned, content)
+
+		respond, cleaned := c.ShouldRespondInGroup(isMentionedInGroup(evt.Message, content, botUsers), content)
 		if !respond {
 			c.ObserveGroupMessage(c.runCtx, peer, messageID, senderID, chatID, content, mediaPaths, metadata, sender)
 			return
@@ -432,6 +486,48 @@ func (c *WhatsAppNativeChannel) handleIncoming(evt *events.Message) {
 	}
 
 	c.HandleMessage(c.runCtx, peer, messageID, senderID, chatID, content, mediaPaths, metadata, sender)
+}
+
+// isMentionedInGroup returns true if the bot is @mentioned in a group message.
+//
+// WhatsApp LID sessions expose two identifiers (phone JID and LID); botUsers should
+// contain the User portion of both so we match whichever format WhatsApp uses.
+//
+// Detection order:
+//  1. ContextInfo.MentionedJID — the authoritative signal (ExtendedTextMessage only).
+//  2. Text-based fallback — handles plain Conversation messages where ContextInfo
+//     is absent, which occurs in LID sessions for some WhatsApp clients.
+func isMentionedInGroup(msg *waE2E.Message, content string, botUsers []string) bool {
+	if len(botUsers) == 0 {
+		return false
+	}
+
+	// Primary: ContextInfo.MentionedJID
+	if ext := msg.GetExtendedTextMessage(); ext != nil {
+		if ctx2 := ext.GetContextInfo(); ctx2 != nil {
+			for _, jid := range ctx2.GetMentionedJID() {
+				for _, u := range botUsers {
+					if strings.HasPrefix(jid, u+"@") || jid == u {
+						return true
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback: @<user> in message text
+	for _, u := range botUsers {
+		if strings.Contains(content, "@"+u) {
+			return true
+		}
+	}
+	return false
+}
+
+
+// VoiceCapabilities reports that this channel supports ASR (speech-to-text).
+func (c *WhatsAppNativeChannel) VoiceCapabilities() channels.VoiceCapabilities {
+	return channels.VoiceCapabilities{ASR: true, TTS: false}
 }
 
 func (c *WhatsAppNativeChannel) Send(ctx context.Context, msg bus.OutboundMessage) ([]string, error) {
@@ -471,6 +567,46 @@ func (c *WhatsAppNativeChannel) Send(ctx context.Context, msg bus.OutboundMessag
 		return nil, fmt.Errorf("whatsapp send: %w", channels.ErrTemporary)
 	}
 	return nil, nil
+}
+
+// downloadWAMedia downloads and decrypts a WhatsApp media message using the
+// whatsmeow client, saves it to a temp file, and returns the local path.
+// Returns "" on any error (errors are logged at WARN level).
+func (c *WhatsAppNativeChannel) downloadWAMedia(
+	ctx context.Context,
+	msg whatsmeow.DownloadableMessage,
+	filename string,
+) string {
+	c.mu.Lock()
+	client := c.client
+	c.mu.Unlock()
+	if client == nil {
+		return ""
+	}
+
+	data, err := client.Download(ctx, msg)
+	if err != nil {
+		logger.WarnCF(
+			"whatsapp",
+			"Failed to download media",
+			map[string]any{"error": err.Error(), "filename": filename},
+		)
+		return ""
+	}
+
+	mediaDir := media.TempDir()
+	if err := os.MkdirAll(mediaDir, 0o700); err != nil {
+		logger.WarnCF("whatsapp", "Failed to create media dir", map[string]any{"error": err.Error()})
+		return ""
+	}
+
+	localPath := filepath.Join(mediaDir, uuid.New().String()[:8]+"_"+utils.SanitizeFilename(filename))
+	if err := os.WriteFile(localPath, data, 0o600); err != nil {
+		logger.WarnCF("whatsapp", "Failed to write media file", map[string]any{"error": err.Error()})
+		return ""
+	}
+
+	return localPath
 }
 
 // parseJID converts a chat ID (phone number or JID string) to types.JID.
