@@ -678,6 +678,27 @@ type ModelConfig struct {
 	isVirtual bool
 }
 
+// UnmarshalJSON accepts both "api_key" (singular SecureString) and "api_keys"
+// (plural SecureStrings). When "api_key" is present it is prepended to
+// APIKeys so that ModelConfig.APIKey() returns the resolved value.
+func (c *ModelConfig) UnmarshalJSON(data []byte) error {
+	// Use a local alias to avoid infinite recursion through this method.
+	type modelConfigAlias ModelConfig
+	type wire struct {
+		modelConfigAlias
+		APIKey *SecureString `json:"api_key,omitempty"`
+	}
+	var w wire
+	if err := json.Unmarshal(data, &w); err != nil {
+		return err
+	}
+	*c = ModelConfig(w.modelConfigAlias)
+	if w.APIKey != nil && w.APIKey.String() != "" {
+		c.APIKeys = append(SecureStrings{w.APIKey}, c.APIKeys...)
+	}
+	return nil
+}
+
 // APIKey returns the first API key from apiKeys
 func (c *ModelConfig) APIKey() string {
 	if len(c.APIKeys) > 0 {
