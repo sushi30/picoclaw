@@ -22,7 +22,10 @@ func TestExecutor_UnknownSlashCommand_ReturnsError(t *testing.T) {
 	ex := NewExecutor(NewRegistry(defs), nil)
 
 	var reply string
-	res := ex.Execute(context.Background(), Request{Channel: "telegram", Text: "/unknown", Reply: func(text string) error { reply = text; return nil }})
+	res := ex.Execute(
+		context.Background(),
+		Request{Channel: "telegram", Text: "/unknown", Reply: func(text string) error { reply = text; return nil }},
+	)
 	if res.Outcome != OutcomeHandled {
 		t.Fatalf("outcome=%v, want=%v", res.Outcome, OutcomeHandled)
 	}
