@@ -454,7 +454,10 @@ func (c *WhatsAppNativeChannel) handleIncoming(evt *events.Message) {
 			"WhatsApp message blocked (not in allow_from)",
 			map[string]any{"sender_id": senderID},
 		)
-		_, _ = c.Send(c.runCtx, bus.OutboundMessage{Channel: "whatsapp", ChatID: chatID, Content: channels.ForbiddenReplyText})
+		_, _ = c.Send(
+			c.runCtx,
+			bus.OutboundMessage{Channel: "whatsapp", ChatID: chatID, Content: channels.ForbiddenReplyText},
+		)
 		return
 	}
 
@@ -526,7 +529,6 @@ func isMentionedInGroup(msg *waE2E.Message, content string, botUsers []string) b
 	}
 	return false
 }
-
 
 // VoiceCapabilities reports that this channel supports ASR (speech-to-text).
 func (c *WhatsAppNativeChannel) VoiceCapabilities() channels.VoiceCapabilities {
